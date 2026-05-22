@@ -1,0 +1,58 @@
+graph TD
+    %% Core Architecture
+    subgraph "DravYantra Ecosystem"
+        direction TB
+
+        %% Web Dashboard
+        subgraph "Web Dashboard (React + Vite)"
+            W_UI["UI Layer (React Components)"]
+            W_State["Local State & Context"]
+            W_Mock["Local Simulator / Mock Data"]
+            
+            W_UI <--> W_State
+            W_State <--> W_Mock
+        end
+
+        %% Mobile App
+        subgraph "Mobile App (Flutter)"
+            M_UI["UI Screens & Widgets"]
+            M_State["Provider State Management"]
+            M_Engine["DataEngine (Local Simulator)"]
+            
+            M_UI <--> M_State
+            M_State <--> M_Engine
+            M_Engine -- "Periodic Updates" --> M_Engine
+        end
+    end
+
+    %% Key Features
+    subgraph "Core Modules (Shared Logic)"
+        Mod_Dash["Dashboard"]
+        Mod_Track["Live Tracking & Routing"]
+        Mod_Vehicles["Vehicles Management"]
+        Mod_Drivers["Drivers Management"]
+        Mod_Trips["Trips & E-Way Bills"]
+        Mod_Fuel["Fuel Logs & Suspect Detection"]
+        Mod_Alerts["Real-Time Alerts System"]
+    end
+
+    W_UI -.-> Mod_Dash
+    M_UI -.-> Mod_Dash
+
+    %% User Personas
+    Admin["Fleet Manager / Admin"]
+    DriverPersona["Driver / Supervisor"]
+
+    Admin -->|"Manages Fleet"| W_UI
+    Admin -->|"Monitors on-the-go"| M_UI
+    DriverPersona -->|"Views App"| M_UI
+
+    classDef react fill:#61DAFB,stroke:#333,stroke-width:2px;
+    classDef flutter fill:#02569B,stroke:#333,stroke-width:2px,color:#fff;
+    classDef modules fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef user fill:#FFD700,stroke:#333,stroke-width:2px;
+
+    class W_UI,W_State,W_Mock react;
+    class M_UI,M_State,M_Engine flutter;
+    class Mod_Dash,Mod_Track,Mod_Vehicles,Mod_Drivers,Mod_Trips,Mod_Fuel,Mod_Alerts modules;
+    class Admin,DriverPersona user;

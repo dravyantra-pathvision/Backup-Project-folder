@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "378948290409",
+    "project_id": "dravyantra",
+    "storage_bucket": "dravyantra.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:378948290409:android:df74ac56260cabca519ff8",
+        "android_client_info": {
+          "package_name": "com.example.drav_yantra_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUedMzsplSNQShmPoodScWgtOME2TW_JM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

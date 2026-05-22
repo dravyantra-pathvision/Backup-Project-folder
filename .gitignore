@@ -1,0 +1,12 @@
+# Ignore backups and extracts
+DravYantra_extracted/
+DravYantra_fast/
+flutter/
+
+# Ignore backend dependencies and secrets
+backend/node_modules/
+backend/.env
+backend/serviceAccountKey.json
+
+# Ignore IDE files
+.idea/
