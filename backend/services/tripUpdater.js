@@ -43,7 +43,7 @@ const computeForRow = (row) => {
 
 const updateActiveTrips = async () => {
   try {
-    const res = await pool.query("SELECT id, uid, distance, fuel_used, default_mileage, idle_duration FROM trips WHERE trip_completed IS NOT TRUE");
+    const res = await pool.query("SELECT id, uid, distance, fuel_used, default_mileage, idle_duration FROM trips WHERE trip_completed IS NOT TRUE AND (manual_override IS NOT TRUE)");
     const rows = res.rows || [];
     if (rows.length === 0) return;
 
@@ -70,7 +70,7 @@ const updateActiveTrips = async () => {
 };
 
 const start = (intervalMs) => {
-  const resolvedInterval = Number(intervalMs || process.env.TRIP_UPDATER_INTERVAL_MS) || 5000;
+  const resolvedInterval = Number(intervalMs || process.env.TRIP_UPDATER_INTERVAL_MS) || 30000;
   if (_interval) return; // already running
   _interval = setInterval(() => {
     updateActiveTrips().catch(err => console.error('Updater error:', err));

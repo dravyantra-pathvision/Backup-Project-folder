@@ -174,6 +174,15 @@ class _FuelEfficiencyInsights extends StatelessWidget {
 
   String _inr(int n) => '₹${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
 
+  String _formatIdleDuration(int seconds) {
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    }
+    return '${minutes}m';
+  }
+
   @override
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
@@ -183,6 +192,8 @@ class _FuelEfficiencyInsights extends StatelessWidget {
     double totalLoss = engine.fuelTrend.fold(0, (sum, item) => sum + item.loss);
     double lossPercentage = (totalLoss / totalUsed) * 100;
     int suspectCount = engine.fuelLogs.where((l) => l.isSuspect).length;
+    final idleWaste = engine.idleRupees;
+    final idleTimeLabel = _formatIdleDuration(engine.idleSeconds);
 
     return Card(
       child: Padding(
@@ -202,9 +213,9 @@ class _FuelEfficiencyInsights extends StatelessWidget {
               children: [
                 Expanded(
                   child: _insightTile(
-                    'Total Consumption', 
-                    _inr(engine.spend), 
-                    '${totalUsed.toInt()} L used this month', 
+                    'Idle Waste', 
+                    _inr(idleWaste), 
+                    '$idleTimeLabel idled this month', 
                     AppTheme.primaryBlue,
                     LucideIcons.droplets
                   ),

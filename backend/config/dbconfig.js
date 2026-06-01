@@ -1,16 +1,26 @@
 // config/dbconfig.js
 // Moved from backend/dbconfig.js
+// Load environment variables early so callers that require this file
+// pick up `DATABASE_URL` and other settings from backend/.env
+require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = process.env.DATABASE_URL 
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: Number(process.env.PG_POOL_MAX) || 12, idleTimeoutMillis: 30000 })
   : new Pool({
       user: process.env.PG_USER || 'postgres',
       host: process.env.PG_HOST || 'localhost',
       database: process.env.PG_DATABASE || 'dravyantra',
       password: process.env.PG_PASSWORD || 'postgres',
       port: process.env.PG_PORT || 5432,
+      max: Number(process.env.PG_POOL_MAX) || 12,
+      idleTimeoutMillis: 30000
     });
+
+// Guard against unexpected errors on idle clients so they don't crash the process
+pool.on('error', (err, client) => {
+  console.error('Unexpected error on idle Postgres client', err);
+});
 
 const initDB = async () => {
   const client = await pool.connect();
@@ -163,6 +173,10 @@ const initDB = async () => {
       await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS fuel_wasted DOUBLE PRECISION DEFAULT 0.0;`);
       await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS money_saved DOUBLE PRECISION DEFAULT 0.0;`);
       await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS money_wasted DOUBLE PRECISION DEFAULT 0.0;`);
+      await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS live_idle_speed DOUBLE PRECISION DEFAULT 0.0;`);
+      await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS live_idle_time VARCHAR DEFAULT '00:00:00';`);
+      await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS live_fuel_count DOUBLE PRECISION DEFAULT 0.0;`);
+      await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
     // Ensure default_user exists so FK constraints are satisfied
     await client.query(`
       INSERT INTO users (uid, email, full_name, role)

@@ -12,9 +12,11 @@ const getAllVehicles = async (uid) => {
 
 const getAvailableVehicles = async (uid) => {
   const result = await pool.query(
-    `SELECT * FROM vehicles v WHERE v.uid = $1 AND NOT EXISTS (
-       SELECT 1 FROM trips t WHERE t.uid = $1 AND t.vehicle = v.plate AND (t.trip_completed IS NOT TRUE)
-     )`,
+    `SELECT * FROM vehicles v WHERE v.uid = $1
+       AND (v.driver IS NULL OR v.driver = '' OR v.driver = 'None' OR v.driver = 'Unassigned')
+       AND NOT EXISTS (
+         SELECT 1 FROM trips t WHERE t.uid = $1 AND t.vehicle = v.plate AND (t.trip_completed IS NOT TRUE)
+       )`,
     [uid]
   );
   return result.rows;
@@ -104,8 +106,8 @@ const deleteVehicle = async (uid, plate) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Unassign vehicle from trips
-    await client.query('UPDATE trips SET vehicle = $1 WHERE vehicle = $2 AND uid = $3', ['', plate, uid]);
+    // Unassign vehicle from trips, but skip manual overrides
+    await client.query('UPDATE trips SET vehicle = $1 WHERE vehicle = $2 AND uid = $3 AND (manual_override IS NOT TRUE)', ['', plate, uid]);
     // Unassign vehicle from drivers
     await client.query('UPDATE drivers SET vehicle = $1 WHERE vehicle = $2 AND uid = $3', ['', plate, uid]);
     // Delete vehicle row

@@ -8,5 +8,6 @@ router.get('/summary', verifyToken, tripController.getSummary);
 router.post('/', verifyToken, tripController.createTrip);
 router.put('/:id', verifyToken, tripController.updateTrip);
 router.delete('/:id', verifyToken, tripController.deleteTrip);
+router.post('/:id/notify', verifyToken, tripController.notifyTrip);
 
 module.exports = router;

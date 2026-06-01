@@ -50,9 +50,6 @@ class _TripsScreenState extends State<TripsScreen> {
             engine.updateTripStatus(currentTrip.id, status);
             Navigator.pop(context);
           },
-          onPowerToggle: (power) {
-            engine.updateTripStatus(currentTrip.id, currentTrip.status, power: power);
-          },
         );
       }(),
       body: SingleChildScrollView(
@@ -180,15 +177,7 @@ class _TripsScreenState extends State<TripsScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(LucideIcons.mapPin, size: 14, color: AppTheme.ecoGreen),
-                      const SizedBox(width: 8),
-                      Text(t.from, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Icon(LucideIcons.arrowRight, size: 12, color: AppTheme.textSecondary)),
-                      Text(t.to, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
+                  Text('${t.from != null && t.from.isNotEmpty ? t.from : '—'} → ${t.to != null && t.to.isNotEmpty ? t.to : '—'}', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -201,6 +190,7 @@ class _TripsScreenState extends State<TripsScreen> {
                       Text(t.vehicle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     ],
                   ),
+                  const SizedBox(height: 8),
                   const Spacer(),
                   if (t.status == 'running') ...[
                     Row(
@@ -305,10 +295,27 @@ class _TripFormDialogState extends State<_TripFormDialog> {
   Set<String> _availableVehiclePlates = {};
 
   Widget build(BuildContext context) {
-    // Build vehicle items: show all vehicles but disable those not in available set
+    // Build vehicle items: exclude vehicles already assigned to active trips
     final allVehicles = widget.engine.vehicles.toList();
-    // Build driver items: show all drivers but disable those not in available set
+    final assignedVehiclePlates = widget.engine.trips.where((t) => t.tripCompleted != true && t.status != 'completed' && t.vehicle.isNotEmpty).map((t) => t.vehicle.trim().toUpperCase()).toSet();
+    final displayedVehicles = allVehicles.where((v) {
+      final plate = v.plate.trim().toUpperCase();
+      // prefer server-provided available set when present
+      if (_availableVehiclePlates.isNotEmpty && !_availableVehiclePlates.contains(plate)) return false;
+      // always exclude currently assigned vehicles
+      if (assignedVehiclePlates.contains(plate)) return false;
+      return true;
+    }).toList();
+
+    // Build driver items: exclude drivers assigned to active trips
     final allDrivers = widget.engine.drivers.toList();
+    final assignedDriverNames = widget.engine.trips.where((t) => t.tripCompleted != true && t.status != 'completed' && t.driver.isNotEmpty).map((t) => t.driver.trim().toLowerCase()).toSet();
+    final displayedDrivers = allDrivers.where((d) {
+      final name = d.name.trim().toLowerCase();
+      if (_availableDriverNames.isNotEmpty && !_availableDriverNames.contains(name)) return false;
+      if (assignedDriverNames.contains(name)) return false;
+      return true;
+    }).toList();
 
     return AlertDialog(
       title: const Text('Schedule New Trip'),
@@ -324,13 +331,10 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                   value: _selectedVehicle,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Select Vehicle'),
-                  items: allVehicles.map((v) {
-                    final plate = v.plate.trim().toUpperCase();
-                    final available = _availableVehiclePlates.isEmpty ? true : _availableVehiclePlates.contains(plate);
+                  items: displayedVehicles.map((v) {
                     return DropdownMenuItem<String>(
                       value: v.plate,
-                      enabled: available,
-                      child: Text('${v.plate} (${v.model ?? ''})${available ? '' : ' (assigned)'}', overflow: TextOverflow.ellipsis),
+                      child: Text('${v.plate} (${v.model ?? ''})', overflow: TextOverflow.ellipsis),
                     );
                   }).toList(),
                   onChanged: (val) => setState(() => _selectedVehicle = val),
@@ -341,13 +345,10 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                   value: _selectedDriver,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Select Driver'),
-                  items: allDrivers.map((d) {
-                    final name = d.name.trim();
-                    final available = _availableDriverNames.isEmpty ? true : _availableDriverNames.contains(name.toLowerCase());
+                  items: displayedDrivers.map((d) {
                     return DropdownMenuItem<String>(
                       value: d.name,
-                      enabled: available,
-                      child: Text('${d.name}${available ? '' : ' (assigned)'}', overflow: TextOverflow.ellipsis),
+                      child: Text(d.name, overflow: TextOverflow.ellipsis),
                     );
                   }).toList(),
                   onChanged: (val) => setState(() => _selectedDriver = val),
@@ -564,13 +565,11 @@ class _TripDetailDrawer extends StatelessWidget {
   final Trip trip;
   final VoidCallback onClose;
   final Function(String) onStatusUpdate;
-  final Function(bool) onPowerToggle;
 
   const _TripDetailDrawer({
     required this.trip, 
     required this.onClose, 
     required this.onStatusUpdate,
-    required this.onPowerToggle,
   });
 
   @override
@@ -589,11 +588,7 @@ class _TripDetailDrawer extends StatelessWidget {
     final int hours = trip.idleDuration ~/ 3600;
     final int minutes = (trip.idleDuration % 3600) ~/ 60;
     final int seconds = trip.idleDuration % 60;
-    final String idleStr = hours > 0 
-        ? '${hours}h ${minutes}m ${seconds}s' 
-        : minutes > 0 
-            ? '${minutes}m ${seconds}s' 
-            : '${seconds}s';
+    final String idleStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 
     return Drawer(
       width: 450,
@@ -642,7 +637,7 @@ class _TripDetailDrawer extends StatelessWidget {
                     ),
                   ],
                 ),
-                Text('${trip.from} → ${trip.to}', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16)),
+                  Text('${trip.from != null && trip.from.isNotEmpty ? trip.from : '—'} → ${trip.to != null && trip.to.isNotEmpty ? trip.to : '—'}', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16)),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -679,23 +674,24 @@ class _TripDetailDrawer extends StatelessWidget {
                 const Divider(height: 32),
                 const Text('LIVE TELEMETRY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
                 const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.power, size: 18, color: trip.power ? AppTheme.ecoGreen : AppTheme.textSecondary),
-                      const SizedBox(width: 12),
-                      const Text('Engine Power', style: TextStyle(color: AppTheme.textSecondary)),
-                      const Spacer(),
-                      Switch(
-                        value: trip.power,
-                        activeColor: AppTheme.ecoGreen,
-                        onChanged: onPowerToggle,
-                      ),
-                    ],
-                  ),
+                // Engine power toggle removed per request; power shown only via status/speed.
+                Builder(
+                  builder: (ctx) {
+                    final engine = Provider.of<DataEngine>(ctx);
+                    int displaySpeed = 0;
+                    if (trip.power == true && trip.tripCompleted != true) {
+                      final matches = engine.vehicles.where((v) => v.plate.trim().toUpperCase() == trip.vehicle.trim().toUpperCase()).toList();
+                      if (matches.isNotEmpty) {
+                        displaySpeed = matches.first.speed;
+                      } else {
+                        displaySpeed = trip.liveSpeed.toInt();
+                      }
+                    } else {
+                      displaySpeed = 0;
+                    }
+                    return _InfoRow(label: 'Live Speed', value: '${displaySpeed} km/h', icon: LucideIcons.gauge);
+                  }
                 ),
-                _InfoRow(label: 'Live Speed', value: '${trip.liveSpeed.toInt()} km/h', icon: LucideIcons.gauge),
                 _InfoRow(
                   label: 'Idle Duration', 
                   value: trip.idleDuration > 0 ? idleStr : '0s', 

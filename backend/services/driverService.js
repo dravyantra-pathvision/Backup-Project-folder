@@ -12,9 +12,11 @@ const getAllDrivers = async (uid) => {
 
 const getAvailableDrivers = async (uid) => {
   const result = await pool.query(
-    `SELECT * FROM drivers d WHERE d.uid = $1 AND NOT EXISTS (
-       SELECT 1 FROM trips t WHERE t.uid = $1 AND (t.driver = d.id OR t.driver = d.name) AND (t.trip_completed IS NOT TRUE)
-     )`,
+    `SELECT * FROM drivers d WHERE d.uid = $1
+       AND (d.vehicle IS NULL OR d.vehicle = '' OR d.vehicle = 'None' OR d.vehicle = 'Unassigned')
+       AND NOT EXISTS (
+         SELECT 1 FROM trips t WHERE t.uid = $1 AND (t.driver = d.id OR t.driver = d.name) AND (t.trip_completed IS NOT TRUE)
+       )`,
     [uid]
   );
   return result.rows;
@@ -112,8 +114,8 @@ const deleteDriver = async (uid, id) => {
     // Fetch driver name (may be used in trips/vehicles)
     const nameRes = await client.query('SELECT name FROM drivers WHERE id = $1 AND uid = $2', [id, uid]);
     const driverName = (nameRes.rows[0] || {}).name || '';
-    // Clear driver references in trips where driver equals id or name
-    await client.query('UPDATE trips SET driver = $1 WHERE (driver = $2 OR driver = $3) AND uid = $4', ['', id, driverName, uid]);
+    // Clear driver references in trips where driver equals id or name, but skip manual overrides
+    await client.query('UPDATE trips SET driver = $1 WHERE (driver = $2 OR driver = $3) AND uid = $4 AND (manual_override IS NOT TRUE)', ['', id, driverName, uid]);
     // Clear driver field in vehicles where driver equals name or id
     await client.query('UPDATE vehicles SET driver = $1 WHERE (driver = $2 OR driver = $3) AND uid = $4', ['', id, driverName, uid]);
     // Delete the driver

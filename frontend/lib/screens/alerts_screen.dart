@@ -62,7 +62,23 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 runSpacing: 8,
                 children: [
                   TextButton.icon(
-                    onPressed: () => engine.dismissAllAlerts(),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        final ok = await engine.clearAllAlerts();
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? 'All alerts cleared' : 'Failed to clear alerts'),
+                            backgroundColor: ok ? AppTheme.success : AppTheme.danger,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: const Text('Error clearing alerts'), backgroundColor: AppTheme.danger),
+                        );
+                      }
+                    },
                     icon: const Icon(LucideIcons.trash2, size: 14),
                     label: const Text('Clear All'),
                     style: TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),

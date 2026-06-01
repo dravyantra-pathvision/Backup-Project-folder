@@ -214,11 +214,21 @@
                     <h3>Fuel Logs</h3>
                     <div class="number" id="fuel-count">-</div>
                 </div>
+                <div class="card">
+                    <h3>Alerts</h3>
+                    <div class="number" id="alerts-count">-</div>
+                </div>
             </div>
             
             <div class="buttons">
                 <button class="btn-primary" onclick="testAPI()">Test API Connection</button>
                 <button class="btn-secondary" onclick="location.reload()">Refresh Dashboard</button>
+                <button class="btn-secondary" onclick="clearAlerts()">Clear Alerts</button>
+            </div>
+
+            <div id="alerts-panel" style="margin-top:20px">
+                <h4>Recent Alerts</h4>
+                <div id="alerts-list" style="max-height:240px; overflow:auto; margin-top:8px; background:#fff; padding:10px; border-radius:6px; border:1px solid #e2e8f0;"></div>
             </div>
             
             <div class="api-info">
@@ -289,7 +299,41 @@ flutter run</pre>
         // Test connection on load
         window.addEventListener('load', () => {
             testAPI();
+            loadAlerts();
         });
+
+        async function loadAlerts() {
+            try {
+                const res = await fetch('http://localhost:3000/api/alerts', { method: 'GET' });
+                if (!res.ok) throw new Error('Failed to fetch alerts');
+                const list = await res.json();
+                const countEl = document.getElementById('alerts-count');
+                const listEl = document.getElementById('alerts-list');
+                countEl.innerText = Array.isArray(list) ? list.length : (list.alerts ? list.alerts.length : 0);
+                // render simple list
+                const items = (Array.isArray(list) ? list : (list.alerts || []));
+                listEl.innerHTML = items.map(a => `<div style="padding:8px;border-bottom:1px solid #f1f5f9"><strong>${a.type || a.message || ''}</strong><div style="font-size:0.9em;color:#64748b">${a.message || ''} <span style=\"float:right\">${a.detectedAt || ''}</span></div></div>`).join('') || '<div style="color:#94a3b8">No alerts</div>';
+            } catch (e) {
+                console.error('loadAlerts failed', e && e.message);
+            }
+        }
+
+        async function clearAlerts() {
+            const btn = event?.target;
+            try {
+                if (btn) { btn.disabled = true; btn.innerText = 'Clearing...'; }
+                const res = await fetch('http://localhost:3000/api/alerts', { method: 'DELETE' });
+                if (!res.ok) throw new Error('Failed to clear alerts');
+                const body = await res.json();
+                // show refreshed alerts (body.alerts expected)
+                await loadAlerts();
+            } catch (e) {
+                console.error('clearAlerts failed', e && e.message);
+                alert('Failed to clear alerts: ' + (e && e.message));
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerText = 'Clear Alerts'; }
+            }
+        }
     </script>
 </body>
 </html>

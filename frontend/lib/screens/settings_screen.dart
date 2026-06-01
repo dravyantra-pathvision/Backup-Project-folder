@@ -16,6 +16,23 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _twoFactorEnabled = false;
   String _apiKey = 'sk_live_...5f4d';
+  final TextEditingController _fleetSpeedController = TextEditingController();
+  final TextEditingController _fleetFuelController = TextEditingController();
+  bool _fleetDraftInitialized = false;
+
+  @override
+  void dispose() {
+    _fleetSpeedController.dispose();
+    _fleetFuelController.dispose();
+    super.dispose();
+  }
+
+  void _syncFleetDrafts(DataEngine engine) {
+    if (_fleetDraftInitialized) return;
+    _fleetSpeedController.text = engine.alertSettings.speedThreshold.toString();
+    _fleetFuelController.text = engine.alertSettings.fuelDropThreshold.toStringAsFixed(1);
+    _fleetDraftInitialized = true;
+  }
   @override
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
@@ -35,6 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingTile(context, LucideIcons.user, 'User Profile', 'Personal settings and permissions', _buildAccountTab(engine)),
           
           _buildSectionHeader('Preferences'),
+          _buildSettingTile(context, LucideIcons.trendingUp, 'Fleet Settings', 'Configure fleet-wide speed and fuel theft limits', _buildFleetSettingsTab(engine)),
           _buildSettingTile(context, LucideIcons.sliders, 'Alert Thresholds', 'Define limits that trigger notifications', _buildAlertsTab(engine)),
           _buildSettingTile(context, LucideIcons.bell, 'Notifications & Alerts', 'Manage how and when you are notified', _buildNotificationsTab(engine)),
           _buildSettingTile(context, LucideIcons.puzzle, 'External Integrations', 'Connect third-party services', _buildIntegrationsTab(engine)),
@@ -136,6 +154,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildFleetSettingsTab(DataEngine engine) {
+    _syncFleetDrafts(engine);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Fleet Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('Set fleet and user-specific limits for speeding and fuel theft alerts.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+          const SizedBox(height: 24),
+          _buildNumericField(
+            'Fleet over-speeding limit (km/h)',
+            _fleetSpeedController,
+          ),
+          _buildNumericField(
+            'Fleet fuel theft limit (L)',
+            _fleetFuelController,
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final speed = int.tryParse(_fleetSpeedController.text.trim());
+                  final fuel = double.tryParse(_fleetFuelController.text.trim());
+                  if (speed == null || fuel == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Enter valid fleet settings values')),
+                    );
+                    return;
+                  }
+                  await engine.updateAlertSettings(
+                    engine.alertSettings.copyWith(
+                      speedThreshold: speed,
+                      fuelDropThreshold: fuel,
+                    ),
+                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Fleet settings saved')),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
+                icon: const Icon(LucideIcons.save, size: 16),
+                label: const Text('Save Fleet Settings'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAlertsTab(DataEngine engine) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -147,7 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
           _buildThresholdSlider('Over-speed Limit', '${engine.alertSettings.speedThreshold} km/h', engine.alertSettings.speedThreshold / 120),
           _buildThresholdSlider('Idle Duration Limit', '${engine.alertSettings.idleLimit} mins', engine.alertSettings.idleLimit / 60),
-          _buildThresholdSlider('Fuel Drop Sensitivity', '${engine.alertSettings.fuelDropThreshold}%', engine.alertSettings.fuelDropThreshold / 20),
+          _buildThresholdSlider('Fuel Theft Limit', '${engine.alertSettings.fuelDropThreshold.toStringAsFixed(1)} L', engine.alertSettings.fuelDropThreshold / 20),
           _buildThresholdSlider('FASTag Low Balance', '₹${engine.alertSettings.fastagThreshold}', engine.alertSettings.fastagThreshold / 2000),
           _buildThresholdSlider('Low Mileage Threshold', '${engine.alertSettings.mileageThreshold} km/L', (engine.alertSettings.mileageThreshold ?? 3.0) / 10.0),
           const Divider(height: 48),
@@ -299,6 +371,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
+      ),
+    );
+  }
+
+  Widget _buildNumericField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextField(
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9\.]'))],
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: AppTheme.textSecondary),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyValue(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }

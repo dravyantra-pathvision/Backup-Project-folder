@@ -3,35 +3,59 @@
 
 const mapTripRow = (row) => {
   if (!row) return null;
+  const get = (snake, camel) => (row[snake] !== undefined ? row[snake] : row[camel]);
+  const num = (snake, camel) => {
+    const v = get(snake, camel);
+    return (v === undefined || v === null || v === '') ? 0 : Number(v);
+  };
+  const str = (snake, camel) => {
+    const v = get(snake, camel);
+    return (v === undefined || v === null) ? null : String(v);
+  };
+  const bool = (snake, camel) => get(snake, camel) === true || get(snake, camel) === 'true';
+
+  const idleSeconds = num('idle_duration', 'idleDuration');
+  const liveIdleTimeVal = get('live_idle_time', 'liveIdleTime') || (function() {
+    const s = idleSeconds || 0;
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const sec = s%60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  })();
+
   return {
-    id: row.id,
-    vehicle: row.vehicle,
-    driver: row.driver,
-    from: row.from_location,
-    to: row.to_location,
-    load: row.load,
-    client: row.client,
-    status: row.status,
-    ewayBill: row.eway_bill,
-    date: row.date,
-    progress: parseFloat(row.progress) || 0.0,
-    distance: parseFloat(row.distance) || 0.0,
-    fuelUsed: parseFloat(row.fuel_used) || 0.0,
-    score: parseFloat(row.score) || 0.0,
-    delayMinutes: parseInt(row.delay_minutes) || 0,
-    waypoints: typeof row.waypoints === 'string' ? JSON.parse(row.waypoints) : (row.waypoints || []),
-    tollCount: parseInt(row.toll_count) || 0,
-    liveSpeed: parseFloat(row.live_speed) || 0.0,
-    power: row.power,
-    idleDuration: parseInt(row.idle_duration) || 0,
-    tripCompleted: row.trip_completed === true
-    ,
-    defaultMileage: parseFloat(row.default_mileage) || 0.0,
-    currentMileage: parseFloat(row.current_mileage) || 0.0,
-    fuelSaved: parseFloat(row.fuel_saved) || 0.0,
-    fuelWasted: parseFloat(row.fuel_wasted) || 0.0,
-    moneySaved: parseFloat(row.money_saved) || 0.0,
-    moneyWasted: parseFloat(row.money_wasted) || 0.0
+    id: get('id','id'),
+    vehicle: get('vehicle','vehicle'),
+    driver: get('driver','driver'),
+    from: get('from_location','from'),
+    to: get('to_location','to'),
+    load: get('load','load'),
+    client: get('client','client'),
+    status: get('status','status'),
+    ewayBill: str('eway_bill','ewayBill'),
+    date: str('date','date'),
+    progress: num('progress','progress'),
+    distance: num('distance','distance'),
+    fuelUsed: num('fuel_used','fuelUsed'),
+    score: num('score','score'),
+    delayMinutes: parseInt(get('delay_minutes','delayMinutes') || 0),
+    waypoints: typeof get('waypoints','waypoints') === 'string' ? JSON.parse(get('waypoints','waypoints')) : (get('waypoints','waypoints') || []),
+    tollCount: parseInt(get('toll_count','tollCount') || 0),
+    liveSpeed: num('live_speed','liveSpeed'),
+    power: get('power','power'),
+    idleDuration: idleSeconds,
+    tripCompleted: bool('trip_completed','tripCompleted'),
+    defaultMileage: num('default_mileage','defaultMileage'),
+    currentMileage: num('current_mileage','currentMileage'),
+    fuelSaved: num('fuel_saved','fuelSaved'),
+    fuelWasted: num('fuel_wasted','fuelWasted'),
+    moneySaved: num('money_saved','moneySaved'),
+    moneyWasted: num('money_wasted','moneyWasted'),
+    liveIdleSpeed: num('live_idle_speed','liveIdleSpeed'),
+    liveIdleTime: liveIdleTimeVal,
+    liveFuelCount: num('live_fuel_count','liveFuelCount'),
+    updatedAt: get('updated_at','updatedAt') ? (get('updated_at','updatedAt') instanceof Date ? get('updated_at','updatedAt').toISOString() : String(get('updated_at','updatedAt'))) : null,
+    // removed legacy w1..w6 fields
   };
 };
 

@@ -1,5 +1,5 @@
 // controllers/tripController.js
-const tripService = require('../services/tripService');
+const tripService = require('../services/storageWrapper');
 const { mapTripRow } = require('../utils/helpers');
 const { handleError } = require('../utils/responseHandler');
 
@@ -40,6 +40,9 @@ const updateTrip = async (req, res) => {
     }
     res.json(mapTripRow(row));
   } catch (err) {
+    if (err && err.code === 'STALE_UPDATE') {
+      return res.status(409).json({ error: 'Stale update rejected: database has newer data' });
+    }
     handleError(res, 'Error updating trip', err);
   }
 };
@@ -57,20 +60,41 @@ const deleteTrip = async (req, res) => {
   }
 };
 
+const notifyTrip = async (req, res) => {
+  const { id } = req.params;
+  try {
+    // get current trip from storage (DB preferred, falls back to local)
+    const list = await tripService.getAllTrips(req.user.uid);
+    const updated = list.find(t => t.id === id);
+    if (!updated) return res.status(404).json({ error: 'Trip not found' });
+    // call detector (it will read prev from local file if prev not provided)
+    const detector = require('../services/fuelTheftDetector');
+    try { await detector.checkAndAlert(null, updated); } catch (e) { console.error('notifyTrip detector error', e && e.message); }
+    res.json({ message: 'Detector invoked', trip: updated });
+  } catch (err) {
+    handleError(res, 'Error invoking detector', err);
+  }
+};
+
 const getSummary = async (req, res) => {
   try {
     const { from, to } = req.query;
     const summary = await tripService.getSummary(req.user.uid, from || null, to || null);
-    // total fuel spend in rupees (user requested: fuel_used * 100)
-      const totalFuelRupees = Math.round((summary.totalFuelUsed || 0) * 100);
-      res.json({
-        totalFuelLiters: Math.round(summary.totalFuelUsed || 0),
-        totalFuelRupees,
-        totalFuelWastedLiters: Math.round(summary.totalFuelWasted || 0),
-        totalFuelSavedLiters: Math.round(summary.totalFuelSaved || 0),
-        totalMoneyWasted: Math.round(summary.totalMoneyWasted || 0),
-        totalMoneySaved: Math.round(summary.totalMoneySaved || 0),
-      });
+    const totalFuelRupees = Math.round((summary.totalFuelUsed || 0) * 100);
+    const totalIdleHours = (summary.totalIdleSeconds || 0) / 3600;
+    const idleCostPerHour = Number(process.env.IDLE_COST_PER_HOUR_RUPEES || process.env.IDLE_RUPEES_PER_60MIN || 100);
+    const totalIdleRupees = Math.round(totalIdleHours * idleCostPerHour);
+    res.json({
+      totalFuelLiters: Math.round(summary.totalFuelUsed || 0),
+      totalFuelRupees,
+      totalFuelWastedLiters: Math.round(summary.totalFuelWasted || 0),
+      totalFuelSavedLiters: Math.round(summary.totalFuelSaved || 0),
+      totalMoneyWasted: Math.round(summary.totalMoneyWasted || 0),
+      totalMoneySaved: Math.round(summary.totalMoneySaved || 0),
+      totalIdleSeconds: Math.round(summary.totalIdleSeconds || 0),
+      totalIdleHours: Number(totalIdleHours.toFixed(2)),
+      totalIdleRupees,
+    });
   } catch (err) {
     handleError(res, 'Error fetching trips summary', err);
   }
@@ -83,3 +107,5 @@ module.exports = {
   deleteTrip,
   getSummary
 };
+
+module.exports.notifyTrip = notifyTrip;

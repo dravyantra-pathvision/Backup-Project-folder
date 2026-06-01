@@ -1,0 +1,2 @@
+$p = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess
+if ($p -ne $null) { Write-Host "killing $p"; Stop-Process -Id $p -Force } else { Write-Host 'no process on port 3000' }

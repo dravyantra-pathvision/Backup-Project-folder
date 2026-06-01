@@ -1,13 +1,15 @@
 const { Pool } = require('pg');
 
 const pool = process.env.DATABASE_URL 
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: Number(process.env.PG_POOL_MAX) || 12, idleTimeoutMillis: 30000 })
   : new Pool({
       user: process.env.PG_USER || 'postgres',
       host: process.env.PG_HOST || 'localhost',
       database: process.env.PG_DATABASE || 'dravyantra',
       password: process.env.PG_PASSWORD || 'postgres',
       port: process.env.PG_PORT || 5432,
+      max: Number(process.env.PG_POOL_MAX) || 12,
+      idleTimeoutMillis: 30000
     });
 
 const initDB = async () => {
