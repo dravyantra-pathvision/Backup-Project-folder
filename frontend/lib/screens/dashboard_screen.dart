@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../core/theme.dart';
 import '../models/engine.dart';
 import '../widgets/live_ticker.dart';
+import 'trips_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -16,26 +17,26 @@ class DashboardScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _LiveTicker(),
+          _LiveTicker(),
           const SizedBox(height: 16),
-          const _KpiGrid(),
+          _KpiGrid(),
           const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
               if (constraints.maxWidth > 1000) {
-                return const Row(
+                return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 2, child: _FuelEfficiencyInsights()),
-                    SizedBox(width: 16),
+                    const SizedBox(width: 16),
                     Expanded(flex: 1, child: _ActiveAlertsPanel()),
                   ],
                 );
               } else {
-                return const Column(
+                return Column(
                   children: [
                     _FuelEfficiencyInsights(),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     _ActiveAlertsPanel(),
                   ],
                 );
@@ -46,19 +47,19 @@ class DashboardScreen extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               if (constraints.maxWidth > 1000) {
-                return const Row(
+                return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _CompliancePanel()),
-                    SizedBox(width: 16),
+                    const SizedBox(width: 16),
                     Expanded(child: _DriverLeaderboard()),
                   ],
                 );
               } else {
-                return const Column(
+                return Column(
                   children: [
                     _CompliancePanel(),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     _DriverLeaderboard(),
                   ],
                 );
@@ -66,7 +67,7 @@ class DashboardScreen extends StatelessWidget {
             },
           ),
           const SizedBox(height: 16),
-          const _LiveFleetCard(),
+          _LiveFleetCard(),
         ],
       ),
     );
@@ -106,9 +107,14 @@ class _LiveTicker extends StatelessWidget {
 class _KpiGrid extends StatelessWidget {
   const _KpiGrid();
 
-  String _inr(int n) => '₹${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
+  String _inr(num n) {
+    final value = n is int ? n.toString() : n.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+    final parts = value.split('.');
+    final formattedInt = parts[0].replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    return parts.length > 1 ? '₹$formattedInt.${parts[1]}' : '₹$formattedInt';
+  }
 
-  String _moneyWithLiters(int money, int liters) {
+  String _moneyWithLiters(num money, int liters) {
     final moneyStr = _inr(money);
     final litersStr = '${liters.toString()} L';
     return '$moneyStr / $litersStr';
@@ -118,6 +124,17 @@ class _KpiGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
     
+    // Use summary values fetched from backend summary endpoint (exact DB values)
+    final int summaryFuelSpendRupees = engine.spend; // total fuel rupees
+    final int summaryFuelUsedLiters = engine.spendLiters; // total fuel liters
+    final double summaryMoneyWasted = engine.loss; // total money wasted
+    final int summaryFuelWastedLiters = engine.lossLiters; // total fuel wasted liters
+    final int summaryMoneySaved = engine.savings; // total money saved
+    final int summaryFuelSavedLiters = engine.savingsLiters; // total fuel saved liters
+    final int summaryFuelUsedLitersInt = summaryFuelUsedLiters;
+    final int summaryFuelWastedLitersInt = summaryFuelWastedLiters;
+    final double summaryFuelSpend = summaryFuelSpendRupees.toDouble();
+
     final totalVehicles = engine.vehicles.length;
     final assignedVehicles = engine.vehicles.where((v) => v.driver.isNotEmpty).length;
     final idleVehicles = engine.vehicles.where((v) => v.status == 'idle' && v.driver.isNotEmpty).length;
@@ -131,9 +148,9 @@ class _KpiGrid extends StatelessWidget {
       mainAxisSpacing: 12,
       childAspectRatio: 1.5,
       children: [
-        _buildKpiCard('Fuel Spend', _moneyWithLiters(engine.spend, engine.spendLiters), LucideIcons.fuel, AppTheme.primaryBlue, 'This Month'),
-        _buildKpiCard('Fuel Loss', _moneyWithLiters(engine.loss, engine.lossLiters), LucideIcons.fuel, AppTheme.danger, 'Estimated loss'),
-        _buildKpiCard('Savings Opp.', _moneyWithLiters(engine.savings, engine.savingsLiters), LucideIcons.trendingUp, AppTheme.success, ''),
+        _buildKpiCard('Fuel Spend', _moneyWithLiters(summaryFuelSpend, summaryFuelUsedLitersInt), LucideIcons.fuel, AppTheme.primaryBlue, 'All trips'),
+        _buildKpiCard('Fuel Loss', _moneyWithLiters(summaryMoneyWasted, summaryFuelWastedLitersInt), LucideIcons.fuel, AppTheme.danger, 'All trips'),
+        _buildKpiCard('Savings Opp.', _moneyWithLiters(summaryMoneySaved, summaryFuelSavedLiters), LucideIcons.trendingUp, AppTheme.success, ''),
         _buildKpiCard('Active Vehicles', '$assignedVehicles / $totalVehicles', LucideIcons.truck, AppTheme.success, ''),
         _buildKpiCard('Drivers Active', '${engine.drivers.where((d) => d.vehicle.isNotEmpty).length} / ${engine.drivers.length}', LucideIcons.user, AppTheme.primaryBlue, ''),
         _buildKpiCard('Ideal Vehicles', idleStr, LucideIcons.clock, AppTheme.warning, ''),
@@ -172,7 +189,12 @@ class _KpiGrid extends StatelessWidget {
 class _FuelEfficiencyInsights extends StatelessWidget {
   const _FuelEfficiencyInsights();
 
-  String _inr(int n) => '₹${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
+  String _inr(num n) {
+    final value = n is int ? n.toString() : n.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+    final parts = value.split('.');
+    final formattedInt = parts[0].replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    return parts.length > 1 ? '₹$formattedInt.${parts[1]}' : '₹$formattedInt';
+  }
 
   String _formatIdleDuration(int seconds) {
     final hours = seconds ~/ 3600;
@@ -187,13 +209,25 @@ class _FuelEfficiencyInsights extends StatelessWidget {
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
     
-    // Calculate simple stats
-    double totalUsed = engine.fuelTrend.fold(0, (sum, item) => sum + item.used);
-    double totalLoss = engine.fuelTrend.fold(0, (sum, item) => sum + item.loss);
-    double lossPercentage = (totalLoss / totalUsed) * 100;
-    int suspectCount = engine.fuelLogs.where((l) => l.isSuspect).length;
-    final idleWaste = engine.idleRupees;
-    final idleTimeLabel = _formatIdleDuration(engine.idleSeconds);
+    // Use DB-sourced summary values instead of folding in-memory trips
+    final double dbIdleWaste = engine.idleRupees; // rupees
+    final int dbIdleSeconds = engine.idleSeconds; // seconds
+    final double dbTotalLoss = engine.loss; // money wasted
+    final double dbTotalSavings = engine.savings.toDouble(); // money saved
+    final int dbTotalFuelUsed = engine.spendLiters; // liters
+    final int dbTotalFuelWasted = engine.lossLiters; // liters
+
+    final double lossPercentage = dbTotalFuelUsed > 0 ? (dbTotalFuelWasted / dbTotalFuelUsed) * 100 : 0.0;
+    final int suspectCount = engine.fuelLogs.where((l) => l.isSuspect).length;
+    final String idleTimeLabel = _formatIdleDuration(dbIdleSeconds);
+
+    String formatRupees(num value) {
+      final valueStr = value is int ? value.toString() : value.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+      final parts = valueStr.split('.');
+      final formattedInt = parts[0].replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+      return parts.length > 1 ? '₹$formattedInt.${parts[1]}' : '₹$formattedInt';
+    }
+    final String idleWasteValue = formatRupees(dbIdleWaste);
 
     return Card(
       child: Padding(
@@ -213,18 +247,21 @@ class _FuelEfficiencyInsights extends StatelessWidget {
               children: [
                 Expanded(
                   child: _insightTile(
-                    'Idle Waste', 
-                    _inr(idleWaste), 
-                    '$idleTimeLabel idled this month', 
+                    engine,
+                    'Idle Money Waste', 
+                    idleWasteValue,
+                    'From trips table (DB)',
                     AppTheme.primaryBlue,
-                    LucideIcons.droplets
+                    LucideIcons.droplets,
+                    showIdlePicker: true,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _insightTile(
+                    engine,
                     'Potential Loss', 
-                    _inr(engine.loss), 
+                    _inr(dbTotalLoss), 
                     '${lossPercentage.toStringAsFixed(1)}% of total fuel', 
                     AppTheme.danger,
                     LucideIcons.trendingDown
@@ -250,7 +287,7 @@ class _FuelEfficiencyInsights extends StatelessWidget {
                       children: [
                         const Text('Actionable Insight', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary)),
                         Text(
-                          'You can save up to ${_inr(engine.savings)} this month by reducing idle time and optimizing routes.',
+                          'You can save up to ${_inr(dbTotalSavings)} this month by reducing idle time and optimizing routes.',
                           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                         ),
                       ],
@@ -271,32 +308,107 @@ class _FuelEfficiencyInsights extends StatelessWidget {
                 _anomalyItem('15% High Idling', LucideIcons.clock, AppTheme.warning),
               ],
             ),
+            const SizedBox(height: 12),
+            const Text('Top Idle Waste (per trip)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+            const SizedBox(height: 8),
+            Builder(builder: (context) {
+              final topTrips = engine.trips.where((t) => t.idleMoneyWasted > 0).toList();
+              topTrips.sort((a, b) => b.idleMoneyWasted.compareTo(a.idleMoneyWasted));
+              final items = topTrips.take(3).map((t) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: Text('${t.vehicle} • ${t.id}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                        Text(_inr(t.idleMoneyWasted), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  )).toList();
+              if (items.isEmpty) return const Text('No idle waste recorded', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary));
+              return Column(children: items);
+            }),
           ],
         ),
       ),
     );
   }
 
-  Widget _insightTile(String label, String value, String sub, Color color, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _insightTile(DataEngine engine, String label, String value, String sub, Color color, IconData icon, {bool showIdlePicker = false}) {
+    return Builder(builder: (ctx) {
+      final idleTrips = engine.trips.where((t) => t.status == 'idle').toList();
+      return Stack(
         children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-          const SizedBox(height: 4),
-          Text(sub, style: TextStyle(fontSize: 10, color: color.withOpacity(0.8))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.08)),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6, offset: const Offset(0,2))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Title
+                Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                // Value (large, centered)
+                Center(child: Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color))),
+                const SizedBox(height: 6),
+                // Subtitle (smaller, muted)
+                Text(sub, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: AppTheme.textSecondary.withOpacity(0.9))),
+              ],
+            ),
+          ),
+          if (showIdlePicker)
+            Positioned(
+              left: 8,
+              top: 8,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: color.withOpacity(0.08)),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0,2))],
+                ),
+                child: PopupMenuButton<String>(
+                  tooltip: 'Show idle trips',
+                  padding: EdgeInsets.zero,
+                  icon: Icon(LucideIcons.pin, size: 16, color: color.withOpacity(0.95)),
+                  itemBuilder: (ctxInner) {
+                    if (idleTrips.isEmpty) {
+                      return [const PopupMenuItem<String>(value: '', child: Text('No idle trips'))];
+                    }
+                    return idleTrips.map((t) {
+                      return PopupMenuItem<String>(
+                        value: t.id,
+                        child: Row(
+                          children: [
+                            Expanded(child: Text('${t.vehicle} • ${t.id}', overflow: TextOverflow.ellipsis)),
+                            const SizedBox(width: 8),
+                            Text('${t.idleFuelWasted.toStringAsFixed(2)} L', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      );
+                    }).toList();
+                  },
+                  onSelected: (tripId) {
+                    if (tripId == null || tripId.isEmpty) return;
+                    engine.highlightTrip(tripId);
+                    Navigator.push(
+                      ctx,
+                      MaterialPageRoute(builder: (context) => const TripsScreen()),
+                    );
+                  },
+                ),
+              ),
+            ),
         ],
-      ),
-    );
+      );
+    });
   }
 
   Widget _anomalyItem(String label, IconData icon, Color color) {

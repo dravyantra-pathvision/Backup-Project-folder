@@ -481,7 +481,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
       // Upload via backend (uses service_role key, bypasses RLS)
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('http://localhost:3000/api/upload?bucket=vehicle_docs'),
+        Uri.parse('${widget.engine.baseUrl}/api/upload?bucket=vehicle_docs'),
       );
       request.files.add(http.MultipartFile.fromBytes(
         'file',
@@ -524,10 +524,10 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
     }
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (_formKey.currentState!.validate()) {
       if (widget.vehicle == null) {
-        widget.engine.addVehicle(Vehicle(
+        await widget.engine.addVehicle(Vehicle(
           plate: _plateCtrl.text.toUpperCase(), 
           model: _modelCtrl.text, 
           year: _rcRegDate?.year ?? 2024, 
@@ -553,8 +553,9 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
           imageUrl: _rcFileUrl ?? _insFileUrl ?? _pucFileUrl,
         ));
       } else {
-        widget.engine.updateVehicle(widget.vehicle!.copyWith()); 
+        await widget.engine.updateVehicle(widget.vehicle!.copyWith()); 
       }
+      await widget.engine.refreshData();
       Navigator.pop(context);
     }
   }

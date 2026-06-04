@@ -52,7 +52,7 @@ async function pollOnce() {
   }
 }
 
-function start(intervalMs = Number(process.env.DB_POLL_INTERVAL_MS) || 30000) {
+function start(intervalMs = Number(process.env.DB_POLL_INTERVAL_MS) || 5000) {
   if (pollIntervalId) return;
   // Run immediately then at interval
   pollOnce();

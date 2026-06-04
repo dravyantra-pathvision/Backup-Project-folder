@@ -13,11 +13,27 @@ const getTrips = async (req, res) => {
   }
 };
 
+// Simple in-memory throttle map to prevent excessive trip writes
+// Keyed by trip id -> epoch ms of last write attempt
+const _lastTripWriteAt = new Map();
+// Minimum interval between writes for the same trip (ms)
+const TRIP_WRITE_MIN_INTERVAL_MS = Number(process.env.TRIP_WRITE_MIN_INTERVAL_MS) || 1000;
+
 const createTrip = async (req, res) => {
   const { id } = req.body;
   if (!id) {
     return res.status(400).json({ error: 'Trip ID is required' });
   }
+
+  // Throttle very-frequent create requests for the same trip id
+  try {
+    const last = _lastTripWriteAt.get(id) || 0;
+    const now = Date.now();
+    if (now - last < TRIP_WRITE_MIN_INTERVAL_MS) {
+      return res.status(429).json({ error: 'Too many requests - try again later' });
+    }
+    _lastTripWriteAt.set(id, now);
+  } catch (e) {}
 
   try {
     const row = await tripService.createTrip(req.user.uid, req.body);
@@ -33,6 +49,15 @@ const createTrip = async (req, res) => {
 
 const updateTrip = async (req, res) => {
   const { id } = req.params;
+  // Throttle very-frequent updates for the same trip id
+  try {
+    const last = _lastTripWriteAt.get(id) || 0;
+    const now = Date.now();
+    if (now - last < TRIP_WRITE_MIN_INTERVAL_MS) {
+      return res.status(429).json({ error: 'Too many requests - try again later' });
+    }
+    _lastTripWriteAt.set(id, now);
+  } catch (e) {}
   try {
     const row = await tripService.updateTrip(req.user.uid, id, req.body);
     if (!row) {
@@ -81,17 +106,20 @@ const getSummary = async (req, res) => {
     const { from, to } = req.query;
     const summary = await tripService.getSummary(req.user.uid, from || null, to || null);
     const totalFuelRupees = Math.round((summary.totalFuelUsed || 0) * 100);
-    const totalIdleHours = (summary.totalIdleSeconds || 0) / 3600;
-    const idleCostPerHour = Number(process.env.IDLE_COST_PER_HOUR_RUPEES || process.env.IDLE_RUPEES_PER_60MIN || 100);
-    const totalIdleRupees = Math.round(totalIdleHours * idleCostPerHour);
+    const totalIdleMinutes = Number(summary.totalIdleMinutes || 0);
+    // Prefer DB-stored idle rupees if available (populated by update script / migrations)
+    // Fallback formula: idle_money_wasted = total_idle_time * 1.7
+    const totalIdleRupees = Number(summary.totalIdleRupees !== undefined ? summary.totalIdleRupees : Number(((totalIdleMinutes) * 1.7).toFixed(2)));
+    const totalIdleHours = totalIdleMinutes / 60;
     res.json({
       totalFuelLiters: Math.round(summary.totalFuelUsed || 0),
       totalFuelRupees,
       totalFuelWastedLiters: Math.round(summary.totalFuelWasted || 0),
       totalFuelSavedLiters: Math.round(summary.totalFuelSaved || 0),
-      totalMoneyWasted: Math.round(summary.totalMoneyWasted || 0),
-      totalMoneySaved: Math.round(summary.totalMoneySaved || 0),
-      totalIdleSeconds: Math.round(summary.totalIdleSeconds || 0),
+      totalMoneyWasted: Number((summary.totalMoneyWasted || 0).toFixed(2)),
+      totalMoneySaved: Number((summary.totalMoneySaved || 0).toFixed(2)),
+      totalIdleSeconds: Math.round((summary.totalIdleMinutes || 0) * 60),
+      totalIdleMinutes: Math.round(totalIdleMinutes),
       totalIdleHours: Number(totalIdleHours.toFixed(2)),
       totalIdleRupees,
     });

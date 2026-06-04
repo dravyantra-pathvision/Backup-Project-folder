@@ -1,11 +1,25 @@
-const { pool } = require('../config/dbconfig');
+require('dotenv').config();
+const { Client } = require('pg');
 const detector = require('./fuelTheftDetector');
 
 let listenerClient = null;
 
+function createClient() {
+  return process.env.DATABASE_URL
+    ? new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+    : new Client({
+        user: process.env.PG_USER || 'postgres',
+        host: process.env.PG_HOST || 'localhost',
+        database: process.env.PG_DATABASE || 'dravyantra',
+        password: process.env.PG_PASSWORD || 'postgres',
+        port: process.env.PG_PORT || 5432,
+      });
+}
+
 async function start() {
   try {
-    listenerClient = await pool.connect();
+    listenerClient = createClient();
+    await listenerClient.connect();
     await listenerClient.query('LISTEN trip_updates');
     listenerClient.on('notification', async (msg) => {
       try {
@@ -21,14 +35,16 @@ async function start() {
     console.log('DBListener: listening for trip_updates notifications');
   } catch (e) {
     console.error('DBListener failed to start:', e && e.message);
-    if (listenerClient) listenerClient.release();
+    if (listenerClient) {
+      try { await listenerClient.end(); } catch (closeErr) {}
+    }
   }
 }
 
 async function stop() {
   if (listenerClient) {
     try { await listenerClient.query('UNLISTEN trip_updates'); } catch (e) {}
-    listenerClient.release();
+    try { await listenerClient.end(); } catch (e) {}
     listenerClient = null;
   }
 }

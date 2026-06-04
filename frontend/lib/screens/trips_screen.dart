@@ -32,6 +32,31 @@ class _TripsScreenState extends State<TripsScreen> {
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
     final trips = engine.trips;
+    // If another screen requested a trip to be highlighted, handle it once
+    final String? highlighted = engine.highlightedTripId;
+    if (highlighted != null && highlighted.isNotEmpty) {
+      Trip? found;
+      try {
+        found = trips.firstWhere((t) => t.id == highlighted);
+      } catch (e) {
+        found = null;
+      }
+      if (found != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() => _selectedTrip = found);
+          _scaffoldKey.currentState?.openEndDrawer();
+          // clear request so we don't reopen repeatedly
+          engine.highlightTrip(null);
+        });
+      }
+    }
+    final activeSelectedTrip = _selectedTrip == null
+      ? null
+      : trips.firstWhere(
+        (trip) => trip.id == _selectedTrip!.id,
+        orElse: () => _selectedTrip!,
+        );
 
     int running = trips.where((t) => t.status == 'running').length;
     int completed = trips.where((t) => t.status == 'completed').length;
@@ -41,13 +66,12 @@ class _TripsScreenState extends State<TripsScreen> {
       key: _scaffoldKey,
       backgroundColor: Colors.transparent,
       endDrawer: () {
-        if (_selectedTrip == null) return null;
-        final currentTrip = trips.firstWhere((t) => t.id == _selectedTrip!.id, orElse: () => _selectedTrip!);
+        if (activeSelectedTrip == null) return null;
         return _TripDetailDrawer(
-          trip: currentTrip,
+          trip: activeSelectedTrip,
           onClose: () => Navigator.pop(context),
           onStatusUpdate: (status) {
-            engine.updateTripStatus(currentTrip.id, status);
+            engine.updateTripStatus(activeSelectedTrip.id, status);
             Navigator.pop(context);
           },
         );
@@ -82,6 +106,8 @@ class _TripsScreenState extends State<TripsScreen> {
             const SizedBox(height: 16),
             _buildKpis(trips.length, running, completed, pending),
             const SizedBox(height: 16),
+            _buildTripTotals(trips),
+            const SizedBox(height: 16),
             _buildTripsGrid(context, trips),
           ],
         ),
@@ -98,6 +124,24 @@ class _TripsScreenState extends State<TripsScreen> {
         _kpiCard('Live Tracking', '$running', 'on road', Colors.blue),
         _kpiCard('Successful', '$completed', 'delivered', Colors.deepPurple),
         _kpiCard('Scheduled', '$pending', 'pending dispatch', AppTheme.warning),
+      ],
+    );
+  }
+
+  Widget _buildTripTotals(List<Trip> trips) {
+    final engine = Provider.of<DataEngine>(context);
+    // Use DB summary fields (source-of-truth) rather than folding in-memory trips
+    final totalFuelUsedLiters = engine.spendLiters; // int liters from summary
+    final totalFuelWastedLiters = engine.lossLiters; // int liters from summary
+    final totalMoneyWasted = engine.loss; // double rupees from summary
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _kpiCard('Fuel Used', '${totalFuelUsedLiters.toString()} L', 'all trips', AppTheme.primaryBlue),
+        _kpiCard('Fuel Wasted', '${totalFuelWastedLiters.toString()} L', 'all trips', AppTheme.danger),
+        _kpiCard('Money Wasted', '₹${totalMoneyWasted.toStringAsFixed(2)}', 'all trips', AppTheme.danger),
       ],
     );
   }
@@ -141,8 +185,15 @@ class _TripsScreenState extends State<TripsScreen> {
         final color = _tripStatusColor(t.status);
 
         return InkWell(
-          onTap: () {
-            setState(() => _selectedTrip = t);
+          onTap: () async {
+            final engine = context.read<DataEngine>();
+            await engine.refreshData();
+            if (!mounted) return;
+            final refreshedTrip = engine.trips.firstWhere(
+              (trip) => trip.id == t.id,
+              orElse: () => t,
+            );
+            setState(() => _selectedTrip = refreshedTrip);
             _scaffoldKey.currentState?.openEndDrawer();
           },
           child: Card(
@@ -531,7 +582,7 @@ class _TripFormDialogState extends State<_TripFormDialog> {
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               widget.engine.addTrip(Trip(
-                id: 'TRP-${4403 + widget.engine.trips.length}',
+                id: 'TRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
                 vehicle: _selectedVehicle ?? '',
                 driver: _selectedDriver ?? '',
                 from: _fromCtrl.text,
@@ -548,6 +599,7 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                 liveSpeed: 0.0,
                 power: false,
                 idleDuration: 0,
+                tripCompleted: false,
               ));
               widget.engine.assignVehicle(_selectedDriver!, _selectedVehicle!);
               Navigator.pop(context);
@@ -589,6 +641,16 @@ class _TripDetailDrawer extends StatelessWidget {
     final int minutes = (trip.idleDuration % 3600) ~/ 60;
     final int seconds = trip.idleDuration % 60;
     final String idleStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+    // All trip status values are sourced from the trips table record for this trip.
+    final double idleMoney = trip.idleMoneyWasted;
+    // Idle Fuel Wasted must be taken from the trip's `idle_money_wasted` column
+    // and displayed as `idle_money_wasted / 100` (liters) per spec.
+    final String idleFuelLitersText = '${trip.idleFuelWasted.toStringAsFixed(2)} L';
+    final double speedingFuelLoss = trip.speedingFuelLoss;
+    final double speedingMoneyLoss = speedingFuelLoss * 100.0;
+    final double theftFuel = trip.theftFuelLoss;
+    final double theftMoney = trip.theftMoneyLoss;
 
     return Drawer(
       width: 450,
@@ -651,6 +713,7 @@ class _TripDetailDrawer extends StatelessWidget {
                     style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                   ),
                 ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -670,34 +733,23 @@ class _TripDetailDrawer extends StatelessWidget {
                 _InfoRow(label: 'Fuel Saved', value: '${trip.fuelSaved.toStringAsFixed(1)} L', icon: LucideIcons.feather),
                 _InfoRow(label: 'Money Saved', value: '₹${trip.moneySaved.toStringAsFixed(2)}', icon: LucideIcons.coins),
                 _InfoRow(label: 'Money Wasted', value: '₹${trip.moneyWasted.toStringAsFixed(2)}', icon: LucideIcons.x),
+                _InfoRow(label: 'Fuel Wasted', value: '${trip.fuelWasted.toStringAsFixed(1)} L', icon: LucideIcons.droplets),
                 _InfoRow(label: 'Tolls Passed', value: '${trip.tollCount}', icon: LucideIcons.creditCard),
                 const Divider(height: 32),
-                const Text('LIVE TELEMETRY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
+                const Text('IDLE STATUS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
                 const SizedBox(height: 16),
-                // Engine power toggle removed per request; power shown only via status/speed.
-                Builder(
-                  builder: (ctx) {
-                    final engine = Provider.of<DataEngine>(ctx);
-                    int displaySpeed = 0;
-                    if (trip.power == true && trip.tripCompleted != true) {
-                      final matches = engine.vehicles.where((v) => v.plate.trim().toUpperCase() == trip.vehicle.trim().toUpperCase()).toList();
-                      if (matches.isNotEmpty) {
-                        displaySpeed = matches.first.speed;
-                      } else {
-                        displaySpeed = trip.liveSpeed.toInt();
-                      }
-                    } else {
-                      displaySpeed = 0;
-                    }
-                    return _InfoRow(label: 'Live Speed', value: '${displaySpeed} km/h', icon: LucideIcons.gauge);
-                  }
-                ),
-                _InfoRow(
-                  label: 'Idle Duration', 
-                  value: trip.idleDuration > 0 ? idleStr : '0s', 
-                  icon: LucideIcons.timer,
-                  valueColor: trip.status == 'idle' ? Colors.orange : null,
-                ),
+                _InfoRow(label: 'Idle Fuel Wasted', value: idleFuelLitersText, icon: LucideIcons.droplets),
+                _InfoRow(label: 'Idle Money Wasted', value: '₹${idleMoney.toStringAsFixed(2)}', icon: LucideIcons.coins),
+                const Divider(height: 32),
+                const Text('OVERSPEEDING STATUS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
+                const SizedBox(height: 16),
+                _InfoRow(label: 'Speeding Fuel Loss', value: '${speedingFuelLoss.toStringAsFixed(2)} L', icon: LucideIcons.rocket),
+                _InfoRow(label: 'Speeding Money Loss', value: '₹${speedingMoneyLoss.toStringAsFixed(2)}', icon: LucideIcons.trendingDown),
+                const Divider(height: 32),
+                const Text('FUEL THEFT STATUS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
+                const SizedBox(height: 16),
+                _InfoRow(label: 'Theft Fuel Loss', value: '${theftFuel.toStringAsFixed(2)} L', icon: LucideIcons.shield),
+                _InfoRow(label: 'Theft Money Loss', value: '₹${theftMoney.toStringAsFixed(2)}', icon: LucideIcons.shieldOff),
                 const Divider(height: 32),
                 const Text('ASSETS ASSIGNED', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
                 const SizedBox(height: 16),
@@ -754,10 +806,48 @@ class _InfoRow extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: AppTheme.textSecondary),
           const SizedBox(width: 12),
-          Text(label, style: const TextStyle(color: AppTheme.textSecondary)),
-          const Spacer(),
+          Expanded(child: Text(label, style: const TextStyle(color: AppTheme.textSecondary))),
           Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: valueColor ?? AppTheme.textPrimary)),
         ],
+      ),
+    );
+  }
+}
+
+class _TripStatusCard extends StatelessWidget {
+  final String title;
+  final Color accent;
+  final List<Widget> children;
+  final double width;
+  const _TripStatusCard({required this.title, required this.accent, required this.children, this.width = 300});
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Card(
+        color: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ...children,
+            ],
+          ),
+        ),
       ),
     );
   }

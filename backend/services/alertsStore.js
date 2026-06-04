@@ -33,7 +33,12 @@ async function addAlert(alert) {
       const aType = a.type || a.details || a.message || null;
       const aStatus = a.status || a.state || null; // treat null as pending
       const unresolved = aStatus !== 'dismissed' && aStatus !== 'acknowledged';
-      return aTrip && aType && unresolved && aTrip === tripId && aType === type;
+      if (!(aTrip && aType && unresolved && aTrip === tripId && aType === type)) return false;
+      // Fuel theft can happen multiple times on the same trip; only suppress exact duplicates.
+      if ((type || '') === 'fuel_theft') {
+        return isExactAlertMatch(a, alert);
+      }
+      return true;
     });
     if (exists) {
       return exists; // do not create duplicate
@@ -43,12 +48,30 @@ async function addAlert(alert) {
     list.unshift(toSave);
     // keep recent 500 alerts
     const trimmed = list.slice(0, 500);
-    fs.writeFileSync(ALERTS_FILE, JSON.stringify(trimmed, null, 2), 'utf8');
-    return toSave;
+    try {
+      console.log('alertsStore: writing', ALERTS_FILE);
+      // atomic write: write to temp file then rename
+      const tmp = ALERTS_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(trimmed, null, 2), 'utf8');
+      fs.renameSync(tmp, ALERTS_FILE);
+      return toSave;
+    } catch (e) {
+      console.error('alertsStore: failed to write alerts file', e && (e.stack || e.message || e));
+      throw e;
+    }
   } catch (e) {
-    console.error('Failed to write alert', e && e.message);
+    console.error('Failed to write alert', e && (e.stack || e.message || e));
     return null;
   }
+}
+
+function isExactAlertMatch(existing, incoming) {
+  const keysToCompare = ['message', 'prevFuel', 'newFuel', 'delta', 'prevSpeed', 'newSpeed', 'drop', 'prevStatus', 'newStatus'];
+  return keysToCompare.every((key) => {
+    const left = existing ? existing[key] : undefined;
+    const right = incoming ? incoming[key] : undefined;
+    return String(left ?? '') === String(right ?? '');
+  });
 }
 
 async function clearAllAlerts() {

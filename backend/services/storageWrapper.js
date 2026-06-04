@@ -7,11 +7,8 @@ const LOCAL_FILE = path.join(__dirname, '..', 'data', 'trips.json');
 
 async function tryCall(fnName, ...args) {
   // Default behavior: prefer DB-backed `tripService`. Use local JSON store only
-  // when explicitly forced via `FORCE_LOCAL=true`. To prevent accidental
-  // overwrites from stale local JSON, local fallback is disabled by default
-  // unless `ALLOW_LOCAL_FALLBACK=true` is set (or FORCE_LOCAL=true).
+  // when explicitly forced via environment variable `FORCE_LOCAL=true`.
   const forceLocal = String(process.env.FORCE_LOCAL || '').toLowerCase() === 'true';
-  const allowLocalFallback = forceLocal || String(process.env.ALLOW_LOCAL_FALLBACK || '').toLowerCase() === 'true';
   if (forceLocal) {
     if (localStore && typeof localStore[fnName] === 'function') {
       try {
@@ -50,16 +47,10 @@ async function tryCall(fnName, ...args) {
       return result;
     }
   } catch (e) {
-    console.error(`Primary DB call ${fnName} failed:`, e && (e.message || e));
-    if (!allowLocalFallback) {
-      // Do not silently fall back to local store; surface the error so callers
-      // (and clients) know DB is unavailable and don't overwrite DB with stale local data.
-      throw e;
-    }
-    console.warn(`Falling back to local store for ${fnName} because ALLOW_LOCAL_FALLBACK is enabled`);
+    console.error(`Primary DB call ${fnName} failed, falling back to local store:`, e && (e.message || e));
   }
   // fallback to local store if primary fails or if local store is the only option
-  if (allowLocalFallback && localStore && typeof localStore[fnName] === 'function') {
+  if (localStore && typeof localStore[fnName] === 'function') {
     try {
       const all = await localStore.getAllTrips(args[0]);
       const prev = all.find(t => t.id === args[1]);

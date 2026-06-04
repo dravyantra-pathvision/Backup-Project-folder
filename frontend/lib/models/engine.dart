@@ -180,6 +180,8 @@ class Trip {
   final double liveSpeed;
   final bool power;
   final double? liveIdleSpeed;
+  final String liveIdleTime;
+  final int liveFuelCount;
   final int idleDuration;
   final bool? tripCompleted;
   final double defaultMileage;
@@ -188,6 +190,14 @@ class Trip {
   final double fuelWasted;
   final double moneySaved;
   final double moneyWasted;
+  final double idleMoneyWasted;
+  // Idle fuel wasted (liters) derived only from the trip's own `idleMoneyWasted` column.
+  double get idleFuelWasted => idleMoneyWasted / 100.0;
+  final double fuelPrice;
+  final double speedingFuelLoss;
+  final double speedingMoneyLoss;
+  final double theftFuelLoss;
+  final double theftMoneyLoss;
   final String? updatedAt;
 
   Trip({
@@ -211,6 +221,8 @@ class Trip {
     this.liveSpeed = 0.0,
     this.power = false,
     this.liveIdleSpeed,
+    this.liveIdleTime = '00:00:00',
+    this.liveFuelCount = 0,
     this.idleDuration = 0,
     this.tripCompleted,
     this.defaultMileage = 4.0,
@@ -219,6 +231,12 @@ class Trip {
     this.fuelWasted = 0.0,
     this.moneySaved = 0.0,
     this.moneyWasted = 0.0,
+    this.idleMoneyWasted = 0.0,
+    this.fuelPrice = 0.0,
+    this.speedingFuelLoss = 0.0,
+    this.speedingMoneyLoss = 0.0,
+    this.theftFuelLoss = 0.0,
+    this.theftMoneyLoss = 0.0,
     this.updatedAt,
   });
 
@@ -236,13 +254,35 @@ class Trip {
     double? liveSpeed,
     bool? power,
     double? liveIdleSpeed,
+    String? liveIdleTime,
+    int? liveFuelCount,
     int? idleDuration,
     bool? tripCompleted,
+    double? defaultMileage,
+    double? currentMileage,
+    double? fuelSaved,
+    double? fuelWasted,
+    double? moneySaved,
+    double? moneyWasted,
+    double? idleMoneyWasted,
+    double? fuelPrice,
+    double? speedingFuelLoss,
+    double? speedingMoneyLoss,
+    double? theftFuelLoss,
+    double? theftMoneyLoss,
   }) {
     return Trip(
-      id: id, vehicle: vehicle ?? this.vehicle, driver: driver ?? this.driver, from: from, to: to, 
-      load: load, client: client, status: status ?? this.status, 
-      ewayBill: ewayBill, date: date, progress: progress ?? this.progress,
+      id: id,
+      vehicle: vehicle ?? this.vehicle,
+      driver: driver ?? this.driver,
+      from: from,
+      to: to,
+      load: load,
+      client: client,
+      status: status ?? this.status,
+      ewayBill: ewayBill,
+      date: date,
+      progress: progress ?? this.progress,
       distance: distance ?? this.distance,
       fuelUsed: fuelUsed ?? this.fuelUsed,
       score: score ?? this.score,
@@ -251,15 +291,23 @@ class Trip {
       tollCount: tollCount ?? this.tollCount,
       liveSpeed: liveSpeed ?? this.liveSpeed,
       power: power ?? this.power,
-      idleDuration: idleDuration ?? this.idleDuration,
       liveIdleSpeed: liveIdleSpeed ?? this.liveIdleSpeed,
+      liveIdleTime: liveIdleTime ?? this.liveIdleTime,
+      liveFuelCount: liveFuelCount ?? this.liveFuelCount,
+      idleDuration: idleDuration ?? this.idleDuration,
       tripCompleted: tripCompleted ?? this.tripCompleted,
-        defaultMileage: defaultMileage ?? this.defaultMileage,
-        currentMileage: currentMileage ?? this.currentMileage,
-        fuelSaved: fuelSaved ?? this.fuelSaved,
-        fuelWasted: fuelWasted ?? this.fuelWasted,
-        moneySaved: moneySaved ?? this.moneySaved,
-        moneyWasted: moneyWasted ?? this.moneyWasted,
+      defaultMileage: defaultMileage ?? this.defaultMileage,
+      currentMileage: currentMileage ?? this.currentMileage,
+      fuelSaved: fuelSaved ?? this.fuelSaved,
+      fuelWasted: fuelWasted ?? this.fuelWasted,
+      moneySaved: moneySaved ?? this.moneySaved,
+      moneyWasted: moneyWasted ?? this.moneyWasted,
+      idleMoneyWasted: idleMoneyWasted ?? this.idleMoneyWasted,
+      fuelPrice: fuelPrice ?? this.fuelPrice,
+      speedingFuelLoss: speedingFuelLoss ?? this.speedingFuelLoss,
+      speedingMoneyLoss: speedingMoneyLoss ?? this.speedingMoneyLoss,
+      theftFuelLoss: theftFuelLoss ?? this.theftFuelLoss,
+      theftMoneyLoss: theftMoneyLoss ?? this.theftMoneyLoss,
     );
   }
 
@@ -284,14 +332,14 @@ class Trip {
     'liveSpeed': liveSpeed,
     'power': power,
     'idleDuration': idleDuration,
-    // Add liveIdleTime as HH:MM:SS for server-side persistence and UI
-    'liveIdleTime': (() {
+    'liveIdleTime': liveIdleTime.isNotEmpty ? liveIdleTime : (() {
       final int hours = idleDuration ~/ 3600;
       final int minutes = (idleDuration % 3600) ~/ 60;
       final int seconds = idleDuration % 60;
       return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     })(),
     'liveIdleSpeed': liveIdleSpeed,
+    'liveFuelCount': liveFuelCount,
     'tripCompleted': tripCompleted ?? false,
     'defaultMileage': defaultMileage,
     'currentMileage': currentMileage,
@@ -299,6 +347,8 @@ class Trip {
     'fuelWasted': fuelWasted,
     'moneySaved': moneySaved,
     'moneyWasted': moneyWasted,
+    'idle_money_wasted': idleMoneyWasted,
+    'fuelPrice': fuelPrice,
     '_updatedAt': updatedAt,
   };
 
@@ -322,6 +372,8 @@ class Trip {
     tollCount: map['tollCount'] ?? map['toll_count'] ?? 0,
     liveSpeed: map['liveSpeed']?.toDouble() ?? map['live_speed']?.toDouble() ?? 0.0,
     power: map['power'] ?? false,
+    liveIdleTime: map['liveIdleTime'] ?? map['live_idle_time'] ?? '',
+    liveFuelCount: map['liveFuelCount'] ?? map['live_fuel_count'] ?? 0,
     idleDuration: map['idleDuration'] ?? map['idle_duration'] ?? 0,
     liveIdleSpeed: (map['liveIdleSpeed']?.toDouble() ?? map['live_idle_speed']?.toDouble() ?? 0.0),
     tripCompleted: map['tripCompleted'] ?? map['trip_completed'] ?? false,
@@ -331,6 +383,25 @@ class Trip {
     fuelWasted: map['fuelWasted']?.toDouble() ?? map['fuel_wasted']?.toDouble() ?? 0.0,
     moneySaved: map['moneySaved']?.toDouble() ?? map['money_saved']?.toDouble() ?? 0.0,
     moneyWasted: map['moneyWasted']?.toDouble() ?? map['money_wasted']?.toDouble() ?? 0.0,
+    idleMoneyWasted: map['idleMoneyWasted']?.toDouble() ?? map['idle_money_wasted']?.toDouble() ?? 0.0,
+    fuelPrice: map['fuelPrice']?.toDouble() ?? map['fuel_price']?.toDouble() ?? 0.0,
+    speedingFuelLoss: map['speedingFuelLoss']?.toDouble() ??
+      map['speedingFuelWasted']?.toDouble() ??
+      map['speeding_fuel_wasted']?.toDouble() ??
+      0.0,
+    speedingMoneyLoss: (() {
+      final double speedingFuel = map['speedingFuelLoss']?.toDouble() ??
+        map['speedingFuelWasted']?.toDouble() ??
+        map['speeding_fuel_wasted']?.toDouble() ??
+        0.0;
+      return speedingFuel * 100.0;
+    })(),
+    theftFuelLoss: map['theftFuelLoss']?.toDouble() ?? map['theft_fuel_loss']?.toDouble() ?? 0.0,
+    // Ensure theft money loss is derived from the trip's own theft fuel loss value.
+    theftMoneyLoss: (() {
+      final double tFuel = map['theftFuelLoss']?.toDouble() ?? map['theft_fuel_loss']?.toDouble() ?? 0.0;
+      return tFuel * 100.0;
+    })(),
     updatedAt: map['updatedAt'] ?? map['updated_at'] ?? map['_updatedAt'],
   );
 }
@@ -579,14 +650,15 @@ class FuelTrend {
 
 class DataEngine extends ChangeNotifier {
   int spend = 2468420;
-  int loss = 172000;
+  double loss = 172000.0;
   int savings = 114000;
   int spendLiters = 0;
   int lossLiters = 0;
   int savingsLiters = 0;
   int idleSeconds = 0;
+  int idleMinutes = 0;
   double idleHours = 0.0;
-  int idleRupees = 0;
+  double idleRupees = 0.0;
   double avgMil = 4.81;
   double idle = 18.2;
   int health = 72;
@@ -596,6 +668,16 @@ class DataEngine extends ChangeNotifier {
 
   Vehicle? _selectedVehicle;
   Vehicle? get selectedVehicle => _selectedVehicle;
+
+  // When another UI wants to request that the Trips view open a specific trip
+  // (e.g. from a dashboard dropdown), set this id. `TripsScreen` listens and
+  // will clear it after honouring the request.
+  String? highlightedTripId;
+
+  void highlightTrip(String? tripId) {
+    highlightedTripId = tripId;
+    notifyListeners();
+  }
 
   void selectVehicle(Vehicle? v) {
     _selectedVehicle = v;
@@ -644,21 +726,21 @@ class DataEngine extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/vehicles'),
+        Uri.parse('$baseUrl/api/vehicles'),
         headers: headers,
         body: jsonEncode(v.toMap()),
       );
-      if (response.statusCode == 400) {
+      if (response.statusCode == 400 || response.statusCode == 409) {
         // Vehicle already exists, try PUT update instead
         final putResponse = await http.put(
-          Uri.parse('http://localhost:3000/api/vehicles/${v.plate}'),
+          Uri.parse('$baseUrl/api/vehicles/${v.plate}'),
           headers: headers,
           body: jsonEncode(v.toMap()),
         );
-        if (putResponse.statusCode != 200) {
+        if (putResponse.statusCode != 200 && putResponse.statusCode != 201) {
           debugPrint("Error updating vehicle: ${putResponse.statusCode} ${putResponse.body}");
         }
-      } else if (response.statusCode != 200) {
+      } else if (response.statusCode != 200 && response.statusCode != 201) {
         debugPrint("Error saving vehicle to backend: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
@@ -670,7 +752,7 @@ class DataEngine extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final response = await http.delete(
-        Uri.parse('http://localhost:3000/api/vehicles/$plate'),
+        Uri.parse('$baseUrl/api/vehicles/$plate'),
         headers: headers,
       );
       if (response.statusCode == 200) {
@@ -710,21 +792,21 @@ class DataEngine extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/drivers'),
+        Uri.parse('$baseUrl/api/drivers'),
         headers: headers,
         body: jsonEncode(d.toMap()),
       );
-      if (response.statusCode == 400) {
+      if (response.statusCode == 400 || response.statusCode == 409) {
         // Driver already exists, try PUT update instead
         final putResponse = await http.put(
-          Uri.parse('http://localhost:3000/api/drivers/${d.id}'),
+          Uri.parse('$baseUrl/api/drivers/${d.id}'),
           headers: headers,
           body: jsonEncode(d.toMap()),
         );
-        if (putResponse.statusCode != 200) {
+        if (putResponse.statusCode != 200 && putResponse.statusCode != 201) {
           debugPrint("Error updating driver: ${putResponse.statusCode} ${putResponse.body}");
         }
-      } else if (response.statusCode != 200) {
+      } else if (response.statusCode != 200 && response.statusCode != 201) {
         debugPrint("Error saving driver to backend: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
@@ -736,7 +818,7 @@ class DataEngine extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final response = await http.delete(
-        Uri.parse('http://localhost:3000/api/drivers/$id'),
+        Uri.parse('$baseUrl/api/drivers/$id'),
         headers: headers,
       );
       if (response.statusCode == 200) {
@@ -834,13 +916,7 @@ class DataEngine extends ChangeNotifier {
     }
   }
 
-  List<FuelLog> fuelLogs = [
-    FuelLog(id: 'FL-101', vehicle: 'MH 14 CX 5543', driver: 'Ramesh Kumar', station: 'HPCL, Pune', liters: 120, rate: 94.2, cost: 11304, odometer: 48200, date: '2026-04-09', isSuspect: false),
-    FuelLog(id: 'FL-102', vehicle: 'DL 1G BC 8891', driver: 'Gurpreet Singh', station: 'BPCL, Gurgaon', liters: 85, rate: 91.5, cost: 7777.5, odometer: 93000, date: '2026-04-09', isSuspect: false),
-    FuelLog(id: 'FL-103', vehicle: 'GJ 12 EZ 9012', driver: 'Abdul Ansari', station: 'Reliance, Gandhidham', liters: 450, rate: 89.8, cost: 40410, odometer: 29300, date: '2026-04-08', isSuspect: true, suspectReason: 'Liters exceed tank capacity (400L)'),
-    FuelLog(id: 'FL-104', vehicle: 'MH 01 AB 1234', driver: 'Suresh Pal', station: 'Indian Oil, Mumbai', liters: 90, rate: 94.2, cost: 8478, odometer: 52000, date: '2026-04-07', isSuspect: false),
-    FuelLog(id: 'FL-105', vehicle: 'MH 43 BP 2114', driver: 'Amit Shah', station: 'Shell, Navi Mumbai', liters: 130, rate: 95.0, cost: 12350, odometer: 15000, date: '2026-04-06', isSuspect: true, suspectReason: 'Excess fill vs capacity'),
-  ];
+
 
   Map<String, double> cityRates = {
     'Mumbai': 94.27, 'Delhi': 87.62, 'Bangalore': 87.89, 'Chennai': 92.76, 'Hyderabad': 97.82, 'Pune': 92.51,
@@ -891,7 +967,7 @@ class DataEngine extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/fuel_logs'),
+        Uri.parse('$baseUrl/api/fuel_logs'),
         headers: headers,
         body: jsonEncode({
           'id': log.id,
@@ -925,6 +1001,7 @@ class DataEngine extends ChangeNotifier {
       }
       candidates.add('http://localhost:3000/api/alerts');
       candidates.add('http://10.0.2.2:3000/api/alerts');
+      candidates.add('$baseUrl/api/alerts');
 
       http.Response? response;
       Exception? lastErr;
@@ -963,12 +1040,37 @@ class DataEngine extends ChangeNotifier {
           );
         }).toList();
 
-        // Replace local alerts with backend authoritative list.
-        // Previously we merged new alerts into the client cache which allowed
-        // stale/demo alerts to persist even after the backend cleared them.
-        // Use the backend as the source of truth: overwrite `alerts` so that
-        // clearing alerts server-side removes them from the UI.
-        alerts = parsed;
+        String alertKey(Alert a) => '${a.truck}|${a.msg}|${a.sev}|${a.category.name}';
+
+        // Preserve current UI state for alerts already on screen so polling
+        // doesn't visibly replace them every refresh.
+        final currentByKey = <String, Alert>{
+          for (final a in alerts) alertKey(a): a,
+        };
+        final localPending = alerts.where((a) => a.driver == 'local' && a.status == AlertStatus.pending).toList();
+
+        final merged = <Alert>[];
+        for (final serverAlert in parsed) {
+          final key = alertKey(serverAlert);
+          final existing = currentByKey[key];
+          if (existing != null) {
+            merged.add(existing.copyWith(
+              status: existing.status,
+              driver: serverAlert.driver.isNotEmpty ? serverAlert.driver : existing.driver,
+            ));
+          } else {
+            merged.add(serverAlert);
+          }
+        }
+
+        for (final lp in localPending) {
+          final key = alertKey(lp);
+          if (!merged.any((a) => alertKey(a) == key)) {
+            merged.insert(0, lp);
+          }
+        }
+
+        alerts = merged;
         hasNewAlerts = alerts.isNotEmpty;
         notifyListeners();
       }
@@ -996,6 +1098,7 @@ class DataEngine extends ChangeNotifier {
       }
       candidates.add('http://localhost:3000/api/alerts');
       candidates.add('http://10.0.2.2:3000/api/alerts');
+      candidates.add('$baseUrl/api/alerts');
 
       http.Response? response;
       Exception? lastErr;
@@ -1058,12 +1161,58 @@ class DataEngine extends ChangeNotifier {
     }
   }
 
-  void _triggerAlert(String truck, String msg, String sev, AlertCategory category) {
-    final id = 'ALT-${Random().nextInt(10000)}';
+  Future<void> _triggerAlert(String truck, String msg, String sev, AlertCategory category) async {
+    final id = 'P-${Random().nextInt(100000)}';
+    // Create a local pending alert immediately so UI shows something fast.
     if (!alerts.any((a) => a.truck == truck && a.msg == msg && a.status == AlertStatus.pending)) {
-      alerts = [Alert(id: id, truck: truck, msg: msg, time: 'Now', sev: sev, category: category), ...alerts];
+      final local = Alert(id: id, truck: truck, msg: msg, time: 'Now', sev: sev, category: category, driver: 'local');
+      alerts = [local, ...alerts];
       hasNewAlerts = true;
+      notifyListeners();
     }
+
+    // Try to persist the alert to the backend so it becomes authoritative.
+    try {
+      final headers = await _getHeaders();
+      final candidates = <String>[];
+      if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
+        candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/alerts');
+      }
+      candidates.add('http://localhost:3000/api/alerts');
+      candidates.add('http://10.0.2.2:3000/api/alerts');
+      candidates.add('$baseUrl/api/alerts');
+
+      http.Response? response;
+      for (final u in candidates) {
+        try {
+          response = await http.post(
+            Uri.parse(u),
+            headers: headers,
+            body: jsonEncode({
+              'trip': truck,
+              'type': category == AlertCategory.safety ? 'rash_driving' : 'idle',
+              'message': msg,
+              'severity': sev,
+              'driver': 'local',
+              'detectedAt': DateTime.now().toIso8601String(),
+            }),
+          ).timeout(const Duration(seconds: 4));
+          if (response.statusCode == 200) break;
+        } catch (_) {
+          continue;
+        }
+      }
+
+      if (response != null && response.statusCode == 200) {
+        // Refresh authoritative list from backend so the alert becomes canonical
+        await _loadAlerts();
+        return;
+      }
+    } catch (e) {
+      debugPrint('Failed to persist alert to server: $e');
+    }
+
+    // If persisting failed, keep the local pending alert until the next successful poll.
   }
 
   List<FuelTrend> fuelTrend = [
@@ -1079,6 +1228,13 @@ class DataEngine extends ChangeNotifier {
     trips = [trip, ...trips];
     notifyListeners();
     _saveTripToBackend(trip);
+  }
+
+  Future<void> refreshData() async {
+    await _loadTrips();
+    await _loadVehicles();
+    await _loadDrivers();
+    await _loadSummary();
   }
 
   void updateTripStatus(String id, String status, {double? progress, double? liveSpeed, bool? power, int? idleDuration}) {
@@ -1119,6 +1275,16 @@ class DataEngine extends ChangeNotifier {
   bool isLoggedIn = true;
   String? backendBaseUrl; // persisted override for device testing (e.g. http://192.168.1.42:3000)
 
+  String get baseUrl {
+    if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
+      return backendBaseUrl!.replaceAll(RegExp(r'/$'), '');
+    }
+    if (!kIsWeb && Platform.isAndroid) {
+      return 'http://10.0.2.2:3000';
+    }
+    return 'http://localhost:3000';
+  }
+
   void updateOrg(Organization newOrg) {
     org = newOrg;
     notifyListeners();
@@ -1140,6 +1306,7 @@ class DataEngine extends ChangeNotifier {
       }
       candidates.add('http://localhost:3000/api/fleet-settings');
       candidates.add('http://10.0.2.2:3000/api/fleet-settings');
+      candidates.add('$baseUrl/api/fleet-settings');
 
       for (final u in candidates) {
         try {
@@ -1184,6 +1351,12 @@ class DataEngine extends ChangeNotifier {
   List<Driver> drivers = [];
   // Queue for trip saves that failed due to backend unavailability
   final List<Trip> _pendingSaves = [];
+  // Track last save timestamp per trip (epoch seconds) to throttle frequent updates
+  final Map<String, int> _lastTripSaveAt = {};
+  // Prevent duplicate concurrent writes for the same trip.
+  final Set<String> _tripSaveInFlight = <String>{};
+  // After a 429, wait before retrying that trip again.
+  final Map<String, int> _tripRetryAfterAt = {};
 
   DataEngine() {
     // load persisted backend override if set
@@ -1200,6 +1373,16 @@ class DataEngine extends ChangeNotifier {
     _loadSummary();
     _loadAlerts();
     _loadFleetSettings();
+    // Poll backend periodically so database changes propagate into the UI quickly.
+    // This refreshes trips first, then vehicles, drivers, and summary.
+    _summaryPollTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      () async {
+        await _loadTrips();
+        await _loadVehicles();
+        await _loadDrivers();
+        await _loadSummary();
+      }();
+    });
     // poll server alerts periodically
     Timer.periodic(const Duration(seconds: 5), (_) => _loadAlerts());
     // Periodic update: do NOT simulate random speeds anymore.
@@ -1228,44 +1411,10 @@ class DataEngine extends ChangeNotifier {
         return updatedV;
       }).toList();
 
-      // Keep trip rows aligned with the database rather than mutating status locally.
-      // Telemetry fields still come from the vehicle list, but the trip's lifecycle state
-      // should be controlled by the backend.
-      trips = trips.map((t) {
-        if (t.tripCompleted == true) return t;
-
-        // Base idle detection on trip status first so idle counting starts
-        // immediately when status becomes 'idle', even if vehicle telemetry
-        // hasn't been loaded into `vehicles` yet.
-        final String st = t.status.toLowerCase();
-        bool isIdle = st == 'idle';
-
-        // Try to find vehicle telemetry to derive live speed and additional
-        // idle detection (running with speed 0).
-        final vList = vehicles.where((vh) => _normalizeVehicleKey(vh.plate) == _normalizeVehicleKey(t.vehicle));
-        double newLiveSpeed = t.liveSpeed;
-        if (vList.isNotEmpty) {
-          final v = vList.first;
-          newLiveSpeed = v.speed.toDouble();
-          if (st == 'running' && v.speed == 0) isIdle = true;
-        }
-
-        final newIdleDuration = isIdle ? t.idleDuration + 1 : t.idleDuration;
-
-        if (newLiveSpeed != t.liveSpeed || newIdleDuration != t.idleDuration) {
-          final updatedTrip = t.copyWith(
-            liveSpeed: newLiveSpeed,
-            idleDuration: newIdleDuration,
-          );
-          // Debug: log idle increments
-          debugPrint('Trip ${t.id} idleDuration -> ${updatedTrip.idleDuration} (isIdle=$isIdle)');
-          // Persist idle counter to backend when changed
-          _saveTripToBackend(updatedTrip);
-          return updatedTrip;
-        }
-
-        return t;
-      }).toList();
+      // Trip rows are now authoritative from the backend. Do not rewrite live
+      // speed or derived trip metrics from vehicle telemetry here, because that
+      // creates a refresh loop against manual DB edits and backend recomputation.
+      // Vehicle telemetry still updates the vehicle list and alerts above.
 
       drivers = drivers.map((d) {
         int newScore = d.onLeave ? d.score : max(0, min(100, (d.score + (Random().nextDouble() * 2 - 1)).round()));
@@ -1277,32 +1426,22 @@ class DataEngine extends ChangeNotifier {
       notifyListeners();
     });
 
-    // Poll backend periodically to pick up external changes (e.g., power/status updates)
-    // Reduced frequency to lower DB load.
-    Timer.periodic(const Duration(seconds: 15), (timer) {
-      // fire-and-forget: reload trips, then refresh vehicles and drivers so UI reflects DB-side unassignments
-      () async {
-        await _loadTrips();
-        await _loadVehicles();
-        await _loadDrivers();
-      }();
-    });
-
     // Periodically attempt to flush any pending trip saves if backend was down
-    Timer.periodic(const Duration(seconds: 5), (timer) {
+    Timer.periodic(const Duration(seconds: 10), (timer) {
       if (_pendingSaves.isEmpty) return;
       final copies = List<Trip>.from(_pendingSaves);
       for (final t in copies) {
         _attemptSavePending(t);
       }
     });
+  }
 
-    // Load aggregated totals (spend/loss/savings) periodically to keep dashboard live
-    Timer.periodic(const Duration(seconds: 5), (timer) {
-      () async {
-        await _loadSummary();
-      }();
-    });
+  Timer? _summaryPollTimer;
+
+  @override
+  void dispose() {
+    try { _summaryPollTimer?.cancel(); } catch (_) {}
+    super.dispose();
   }
 
   Future<void> _loadFleetSettings() async {
@@ -1314,6 +1453,7 @@ class DataEngine extends ChangeNotifier {
       }
       candidates.add('http://localhost:3000/api/fleet-settings');
       candidates.add('http://10.0.2.2:3000/api/fleet-settings');
+      candidates.add('$baseUrl/api/fleet-settings');
 
       for (final u in candidates) {
         try {
@@ -1388,21 +1528,22 @@ class DataEngine extends ChangeNotifier {
   Future<void> _loadSummary() async {
     try {
       final headers = await _getHeaders();
-      final resp = await http.get(Uri.parse('http://localhost:3000/api/trips/summary'), headers: headers);
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final response = await http.get(Uri.parse('$baseUrl/api/trips/summary'), headers: headers);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
         spend = (data['totalFuelRupees'] ?? 0).toInt();
-        loss = (data['totalMoneyWasted'] ?? 0).toInt();
+        loss = (data['totalMoneyWasted'] ?? 0).toDouble();
         savings = (data['totalMoneySaved'] ?? 0).toInt();
         spendLiters = (data['totalFuelLiters'] ?? 0).toInt();
         lossLiters = (data['totalFuelWastedLiters'] ?? 0).toInt();
         savingsLiters = (data['totalFuelSavedLiters'] ?? 0).toInt();
-        idleSeconds = (data['totalIdleSeconds'] ?? 0).toInt();
-        idleHours = (data['totalIdleHours'] ?? 0).toDouble();
-        idleRupees = (data['totalIdleRupees'] ?? 0).toInt();
+        idleMinutes = (data['totalIdleMinutes'] ?? 0).toInt();
+        idleSeconds = idleMinutes * 60;
+        idleHours = (data['totalIdleHours'] ?? (idleMinutes / 60.0)).toDouble();
+        idleRupees = (data['totalIdleRupees'] ?? 0).toDouble();
         notifyListeners();
       } else {
-        debugPrint('Failed to load summary: ${resp.statusCode} ${resp.body}');
+        debugPrint('Failed to load summary: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
       debugPrint('Error loading summary: $e');
@@ -1412,7 +1553,7 @@ class DataEngine extends ChangeNotifier {
   Future<void> _loadVehicles() async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('http://localhost:3000/api/vehicles'), headers: headers);
+      final response = await http.get(Uri.parse('$baseUrl/api/vehicles'), headers: headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         vehicles = data.map((item) => Vehicle.fromMap(item as Map<String, dynamic>)).toList();
@@ -1430,7 +1571,7 @@ class DataEngine extends ChangeNotifier {
   Future<List<Vehicle>> fetchAvailableVehicles() async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('http://localhost:3000/api/vehicles?available=true'), headers: headers);
+      final response = await http.get(Uri.parse('$baseUrl/api/vehicles?available=true'), headers: headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         final list = data.map((item) => Vehicle.fromMap(item as Map<String, dynamic>)).toList();
@@ -1448,11 +1589,10 @@ class DataEngine extends ChangeNotifier {
   Future<void> _loadFuelLogs() async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('http://localhost:3000/api/fuel_logs'), headers: headers);
+      final response = await http.get(Uri.parse('$baseUrl/api/fuel_logs'), headers: headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         fuelLogs = data.map((item) => FuelLog.fromMap(item as Map<String, dynamic>)).toList();
-        _mergeMissingDriversFromOperationalData();
         debugPrint("Loaded fuel logs from DB: ${fuelLogs.length}");
         notifyListeners();
       } else {
@@ -1495,11 +1635,11 @@ class DataEngine extends ChangeNotifier {
   Future<void> _loadDrivers() async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('http://localhost:3000/api/drivers'), headers: headers);
+      final response = await http.get(Uri.parse('$baseUrl/api/drivers'), headers: headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         drivers = data.map((item) => Driver.fromMap(item as Map<String, dynamic>)).toList();
-        _mergeMissingDriversFromOperationalData();
+        _syncDriverStatuses();
         debugPrint("Loaded drivers from DB: ${drivers.length}");
         notifyListeners();
       } else {
@@ -1513,7 +1653,7 @@ class DataEngine extends ChangeNotifier {
   Future<List<Driver>> fetchAvailableDrivers() async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('http://localhost:3000/api/drivers?available=true'), headers: headers);
+      final response = await http.get(Uri.parse('$baseUrl/api/drivers?available=true'), headers: headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         final list = data.map((item) => Driver.fromMap(item as Map<String, dynamic>)).toList();
@@ -1531,12 +1671,12 @@ class DataEngine extends ChangeNotifier {
   Future<void> _loadTrips() async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('http://localhost:3000/api/trips'), headers: headers);
+      final response = await http.get(Uri.parse('$baseUrl/api/trips'), headers: headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         trips = data.map((item) => Trip.fromMap(item as Map<String, dynamic>)).toList();
         _syncVehicleStatuses();
-        _mergeMissingDriversFromOperationalData();
+        _syncDriverStatuses();
         debugPrint("Loaded trips from DB: ${trips.length}");
         notifyListeners();
       } else {
@@ -1547,46 +1687,75 @@ class DataEngine extends ChangeNotifier {
     }
   }
 
+  Map<String, dynamic> _buildTripPatch(Trip t) {
+    final prev = trips.firstWhere(
+      (x) => x.id == t.id,
+      orElse: () => Trip(id: '', vehicle: '', driver: '', from: '', to: '', load: '', client: '', status: 'not_started', ewayBill: '', date: '', progress: 0.0),
+    );
+
+    final newMap = t.toMap();
+    if (prev.id.isEmpty) {
+      return newMap;
+    }
+
+    final prevMap = prev.toMap();
+    final payload = <String, dynamic>{'id': t.id};
+    const fieldsToCheck = ['vehicle','driver','from','to','load','client','status','ewayBill','date','progress','distance','fuelUsed','score','delayMinutes','waypoints','tollCount','liveSpeed','power','idleDuration','tripCompleted','defaultMileage','currentMileage','fuelSaved','fuelWasted','moneySaved','moneyWasted','liveIdleTime','liveIdleSpeed','liveFuelCount'];
+
+    for (final k in fieldsToCheck) {
+      final p = prevMap[k];
+      final n = newMap[k];
+      if (p is List && n is List) {
+        if (jsonEncode(p) != jsonEncode(n)) payload[k] = n;
+      } else if (p != n) {
+        payload[k] = n;
+      }
+    }
+
+    if (t.updatedAt != null) payload['_updatedAt'] = t.updatedAt;
+    return payload.keys.length <= 1 ? newMap : payload;
+  }
+
   Future<void> _saveTripToBackend(Trip t) async {
     try {
+      if (_tripSaveInFlight.contains(t.id)) {
+        if (!_pendingSaves.any((x) => x.id == t.id)) _pendingSaves.add(t);
+        debugPrint('Skipping save for ${t.id}; a save is already in flight');
+        return;
+      }
+
+      final int nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final int retryAfter = _tripRetryAfterAt[t.id] ?? 0;
+      if (nowSec < retryAfter) {
+        if (!_pendingSaves.any((x) => x.id == t.id)) _pendingSaves.add(t);
+        debugPrint('Deferring save for ${t.id}; retry after ${retryAfter - nowSec}s');
+        return;
+      }
+
+      // Throttle per-trip saves to avoid overwhelming backend DB pool.
+      // Allow one save per trip every 10 seconds.
+      final int last = _lastTripSaveAt[t.id] ?? 0;
+      if (nowSec - last < 10) {
+        // Coalesce frequent updates into the pending queue for later flush.
+        if (!_pendingSaves.any((x) => x.id == t.id)) _pendingSaves.add(t);
+        debugPrint('Throttling save for ${t.id}; last saved ${nowSec - last}s ago');
+        return;
+      }
+      _lastTripSaveAt[t.id] = nowSec;
+      _tripSaveInFlight.add(t.id);
       debugPrint('Saving trip ${t.id} to backend: idleDuration=${t.idleDuration} liveSpeed=${t.liveSpeed}');
       try {
         debugPrint('trip payload: ${jsonEncode(t.toMap())}');
       } catch (e) {}
       final headers = await _getHeaders();
-      // Build a minimal patch payload to avoid sending default zeros which
-      // overwrite DB-authoritative values. Find previous local trip state
-      // and include only changed fields. If no previous found, send full map.
-      Map<String, dynamic> payload;
-      final prev = trips.firstWhere((x) => x.id == t.id, orElse: () => Trip(id: '', vehicle: '', driver: '', from: '', to: '', load: '', client: '', status: 'not_started', ewayBill: '', date: '', progress: 0.0));
-      if (prev.id.isNotEmpty) {
-        final prevMap = prev.toMap();
-        final newMap = t.toMap();
-        payload = {'id': t.id};
-        final fieldsToCheck = ['vehicle','driver','from','to','load','client','status','ewayBill','date','progress','distance','fuelUsed','score','delayMinutes','waypoints','tollCount','liveSpeed','power','idleDuration','tripCompleted','defaultMileage','currentMileage','fuelSaved','fuelWasted','moneySaved','moneyWasted','liveIdleTime','liveIdleSpeed','liveFuelCount'];
-        for (final k in fieldsToCheck) {
-          final p = prevMap[k];
-          final n = newMap[k];
-          if (p is List && n is List) {
-            if (jsonEncode(p) != jsonEncode(n)) payload[k] = n;
-          } else if (p != n) {
-            payload[k] = n;
-          }
-        }
-        // always include timestamp if present so server can detect stale writes
-        if (t.updatedAt != null) payload['_updatedAt'] = t.updatedAt;
-        // if nothing changed (shouldn't happen), send full map as fallback
-        if (payload.keys.length <= 1) payload = newMap;
-      } else {
-        payload = t.toMap();
-      }
+      final payload = _buildTripPatch(t);
 
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/trips'),
+        Uri.parse('$baseUrl/api/trips'),
         headers: headers,
         body: jsonEncode(payload),
       );
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         try {
           final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
           final Trip updated = Trip.fromMap(body);
@@ -1594,6 +1763,7 @@ class DataEngine extends ChangeNotifier {
           trips = trips.map((x) => x.id == updated.id ? updated : x).toList();
           // Remove from pending queue if present
           _pendingSaves.removeWhere((x) => x.id == t.id);
+          _tripRetryAfterAt.remove(t.id);
           notifyListeners();
           debugPrint('Trip ${t.id} saved and local cache updated');
         } catch (e) {
@@ -1607,36 +1777,56 @@ class DataEngine extends ChangeNotifier {
           await _loadTrips();
           // ensure we don't keep retrying a stale local copy
           _pendingSaves.removeWhere((x) => x.id == t.id);
+          _tripRetryAfterAt.remove(t.id);
           return;
         }
-        // enqueue for retry
+        if (response.statusCode == 429) {
+          // Back off for 30 seconds on rate limit responses to avoid hammering
+          // the backend and to keep the DB listener stable.
+          _tripRetryAfterAt[t.id] = nowSec + 30;
+        }
+        // enqueue for retry if not rate-limited or after the backoff expires
         if (!_pendingSaves.any((x) => x.id == t.id)) _pendingSaves.add(t);
       }
     } catch (e) {
       debugPrint("Error saving trip to backend: $e");
       // enqueue for retry
       if (!_pendingSaves.any((x) => x.id == t.id)) _pendingSaves.add(t);
+    } finally {
+      _tripSaveInFlight.remove(t.id);
     }
   }
 
   // Try to resend a pending trip save; remove from queue on success
   Future<void> _attemptSavePending(Trip t) async {
     try {
+      final int nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final int retryAfter = _tripRetryAfterAt[t.id] ?? 0;
+      if (nowSec < retryAfter || _tripSaveInFlight.contains(t.id)) {
+        return;
+      }
+      _tripSaveInFlight.add(t.id);
       final headers = await _getHeaders();
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/trips'),
+        Uri.parse('$baseUrl/api/trips'),
         headers: headers,
-        body: jsonEncode(t.toMap()),
+        body: jsonEncode(_buildTripPatch(t)),
       );
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         _pendingSaves.removeWhere((x) => x.id == t.id);
+        _tripRetryAfterAt.remove(t.id);
         debugPrint('Flushed pending save for ${t.id}');
+      } else if (response.statusCode == 429) {
+        _tripRetryAfterAt[t.id] = nowSec + 30;
+        debugPrint('Pending save rate-limited for ${t.id}; backing off 30s');
       } else {
         debugPrint('Pending save still failing for ${t.id}: ${response.statusCode}');
       }
     } catch (e) {
       // still offline; keep in queue
       debugPrint('Pending save attempt error for ${t.id}: $e');
+    } finally {
+      _tripSaveInFlight.remove(t.id);
     }
   }
 
@@ -1649,7 +1839,7 @@ class DataEngine extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       final response = await http.delete(
-        Uri.parse('http://localhost:3000/api/trips/$id'),
+        Uri.parse('$baseUrl/api/trips/$id'),
         headers: headers,
       );
       if (response.statusCode == 200) {
@@ -1677,78 +1867,6 @@ class DataEngine extends ChangeNotifier {
   bool _isRealDriverName(String value) {
     final v = value.trim();
     return v.isNotEmpty && v != 'Unassigned' && v != 'None';
-  }
-
-  void _mergeMissingDriversFromOperationalData() {
-    final existingByName = <String>{
-      ...drivers.map((d) => _normalizeName(d.name)),
-    };
-
-    final candidateNames = <String>{};
-
-    for (final trip in trips) {
-      if (_isRealDriverName(trip.driver)) {
-        candidateNames.add(trip.driver.trim());
-      }
-    }
-
-    for (final vehicle in vehicles) {
-      if (_isRealDriverName(vehicle.driver)) {
-        candidateNames.add(vehicle.driver.trim());
-      }
-    }
-
-    for (final log in fuelLogs) {
-      if (_isRealDriverName(log.driver)) {
-        candidateNames.add(log.driver.trim());
-      }
-    }
-
-    final missing = candidateNames.where((name) => !existingByName.contains(_normalizeName(name))).toList();
-    if (missing.isEmpty) return;
-
-    int nextIndex = drivers.length + 1;
-    final synthesized = missing.map((name) {
-      final assignedVehicle = trips.firstWhere(
-        (t) => _normalizeName(t.driver) == _normalizeName(name),
-        orElse: () => Trip(
-          id: '', vehicle: '', driver: '', from: '', to: '', load: '', client: '', status: 'offline', ewayBill: '', date: '', progress: 0.0,
-        ),
-      ).vehicle;
-
-      final vehicleValue = assignedVehicle.isNotEmpty ? assignedVehicle : '';
-      final statusValue = vehicleValue.isNotEmpty ? 'on_duty' : 'idle';
-
-      final generated = Driver(
-        id: 'DRV-AUTO-${nextIndex++}',
-        name: name,
-        phone: '',
-        age: 30,
-        exp: 0,
-        lic: '',
-        licExp: '',
-        blood: '',
-        vehicle: vehicleValue,
-        status: statusValue,
-        score: 0,
-        mil: 0,
-        idle: 0,
-        trips: 0,
-        harsh: 0,
-        overSpeed: 0,
-        deviation: 0,
-        fuelEff: 0,
-        rating: 0,
-        home: '',
-        onLeave: false,
-      );
-
-      return generated;
-    }).toList();
-
-    drivers = [...drivers, ...synthesized];
-    // After adding synthesized drivers, ensure status reflects active trips
-    _syncDriverStatuses();
   }
 
   void _syncDriverStatuses() {

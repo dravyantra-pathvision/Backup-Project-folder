@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const alertsStore = require('./alertsStore');
+const { pool } = require('../config/dbconfig');
 const { readFleetSettings } = require('./fleetSettingsStore');
+const alertsStore = require('./alertsStore');
 
 const TRIPS_FILE = path.join(__dirname, '..', 'data', 'trips.json');
 
@@ -9,7 +10,35 @@ const TRIPS_FILE = path.join(__dirname, '..', 'data', 'trips.json');
 // thresholds: tune via env vars if needed
 const DEFAULT_FUEL_THRESHOLD_LITERS = Number(process.env.FUEL_THEFT_THRESHOLD_LITERS) || 0.7; // liters
 const DEFAULT_WINDOW_SECONDS = Number(process.env.FUEL_THEFT_WINDOW_SEC) || 5; // seconds
+const RASH_SPEED_THRESHOLD = Number(process.env.RASH_SPEED_THRESHOLD_KMPH) || 80; // km/h
 const HARSH_BRAKE_THRESHOLD = Number(process.env.HARSH_BRAKE_THRESHOLD_KMPH) || 40; // drop >=40 km/h within window
+
+function getFuelTheftThresholdLiters() {
+  const settings = readFleetSettings();
+  const configured = Number(settings && settings.fuelDropThreshold);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FUEL_THRESHOLD_LITERS;
+}
+
+async function persistFuelTheftLoss(tripId, theftFuelLoss) {
+  if (!tripId) return;
+  const fuelLoss = Number(theftFuelLoss);
+  const safeFuelLoss = Number.isFinite(fuelLoss) && fuelLoss > 0 ? Number(fuelLoss.toFixed(2)) : 0;
+  const safeMoneyLoss = Number((safeFuelLoss * 100).toFixed(2));
+  try {
+    await pool.query(
+      'UPDATE trips SET theft_fuel_loss = $1, theft_money_loss = $2 WHERE id = $3',
+      [safeFuelLoss, safeMoneyLoss, tripId]
+    );
+  } catch (e) {
+    console.error('persistFuelTheftLoss failed', e && e.message);
+  }
+}
+
+function isDuplicateFuelTheftAlert(existing, incoming) {
+  const existingMessage = String(existing && existing.message ? existing.message : '');
+  const incomingMessage = String(incoming && incoming.message ? incoming.message : '');
+  return existingMessage === incomingMessage;
+}
 
 function readLocalTripById(id) {
   try {
@@ -45,17 +74,14 @@ async function checkAndAlert(prevTrip, updatedTrip) {
     const id = updatedTrip.id;
     const prev = prevTrip || readLocalTripById(id) || {};
 
-    // compute time diff using any of the common timestamp fields that may be present
-    // (DB uses `updated_at`, some clients use `updatedAt` or `_updatedAt`).
+    // compute time diff
     let timeDiffSec = DEFAULT_WINDOW_SECONDS + 1;
-    const prevUpdatedRaw = prev && (prev._updatedAt || prev.updated_at || prev.updatedAt || prev.updatedAt);
-    const newUpdatedRaw = updatedTrip && (updatedTrip._updatedAt || updatedTrip.updated_at || updatedTrip.updatedAt || updatedTrip.updatedAt);
-    if (prevUpdatedRaw && newUpdatedRaw) {
-      const p = new Date(prevUpdatedRaw).getTime();
-      const n = new Date(newUpdatedRaw).getTime();
+    if (prev._updatedAt && updatedTrip._updatedAt) {
+      const p = new Date(prev._updatedAt).getTime();
+      const n = new Date(updatedTrip._updatedAt).getTime();
       if (!isNaN(p) && !isNaN(n)) timeDiffSec = Math.abs(n - p) / 1000;
-    } else if (newUpdatedRaw) {
-      timeDiffSec = 0; // treat as immediate if only new timestamp available
+    } else if (updatedTrip._updatedAt) {
+      timeDiffSec = 0;
     }
 
     // Ensure we're using the DB-provided power flag; only generate movement-related
@@ -63,19 +89,16 @@ async function checkAndAlert(prevTrip, updatedTrip) {
     const powerPrev = Boolean(prev.power || prev.power === true);
     const powerNow = Boolean(updatedTrip.power || updatedTrip.power === true);
 
-    const fleetSettings = readFleetSettings();
-    const rashSpeedThreshold = Number(fleetSettings.speedThreshold) || Number(process.env.RASH_SPEED_THRESHOLD_KMPH) || 80;
-
-    // 1) Rash driving: live speed over threshold — only when power is ON
+    // 1) Rash driving: crossing above threshold — only when power is ON
     const prevSpeed = Number(prev.liveSpeed || prev.live_speed || prev.speed || 0);
     const newSpeed = Number(updatedTrip.liveSpeed || updatedTrip.live_speed || updatedTrip.speed || 0);
-    if (powerNow && newSpeed > rashSpeedThreshold) {
+    if (powerNow && (prevSpeed <= RASH_SPEED_THRESHOLD) && (newSpeed > RASH_SPEED_THRESHOLD)) {
       await createAlert({
         tripId: id,
         vehiclePlate: updatedTrip.vehiclePlate || updatedTrip.vehicle || updatedTrip.vehicle_plate || null,
         driver: updatedTrip.driverName || updatedTrip.driver || updatedTrip.driver_name || null,
         type: 'rash_driving',
-        message: `${updatedTrip.vehicle || updatedTrip.vehiclePlate || 'Vehicle'} exceeded the fleet speed limit of ${rashSpeedThreshold} km/h at ${newSpeed} km/h`,
+        message: `${updatedTrip.vehicle || updatedTrip.vehiclePlate || 'Vehicle'} is driving rashly at speed ${newSpeed}`,
         prevSpeed,
         newSpeed
       });
@@ -101,15 +124,23 @@ async function checkAndAlert(prevTrip, updatedTrip) {
       const prevFuel = Number(prev.liveFuelCount ?? prev.live_fuel_count ?? 0);
       const newFuel = Number(updatedTrip.liveFuelCount ?? updatedTrip.live_fuel_count ?? 0);
       const delta = prevFuel - newFuel; // positive if decreased
+      const threshold = getFuelTheftThresholdLiters();
+      const storedTheft = Number(updatedTrip.theftFuelLoss ?? updatedTrip.theft_fuel_loss ?? 0);
+      const desiredTheft = (prevFuel !== newFuel && delta >= threshold)
+        ? Number(delta.toFixed(2))
+        : 0;
       console.log('fuelTheftDetector: prevFuel=', prevFuel, 'newFuel=', newFuel, 'delta=', delta);
-      console.log('fuelTheftDetector: timeDiffSec=', timeDiffSec, 'threshold=', DEFAULT_FUEL_THRESHOLD_LITERS, 'window=', DEFAULT_WINDOW_SECONDS);
-      if (delta >= DEFAULT_FUEL_THRESHOLD_LITERS && timeDiffSec <= DEFAULT_WINDOW_SECONDS) {
+      console.log('fuelTheftDetector: timeDiffSec=', timeDiffSec, 'threshold=', threshold, 'window=', DEFAULT_WINDOW_SECONDS);
+      if (prevFuel !== newFuel && desiredTheft !== storedTheft) {
+        await persistFuelTheftLoss(id, desiredTheft);
+      }
+      if (desiredTheft > 0) {
         await createAlert({
           tripId: id,
           vehiclePlate: updatedTrip.vehiclePlate || updatedTrip.vehicle || updatedTrip.vehicle_plate || null,
           driver: updatedTrip.driverName || updatedTrip.driver || updatedTrip.driver_name || null,
           type: 'fuel_theft',
-          message: `Possible fuel theft: fuel level changed from ${prevFuel}L to ${newFuel}L`,
+          message: `Sudden fuel drop detected (${prevFuel} -> ${newFuel} liters) — possible theft`,
           prevFuel,
           newFuel,
           delta

@@ -54,7 +54,14 @@ const mapTripRow = (row) => {
     liveIdleSpeed: num('live_idle_speed','liveIdleSpeed'),
     liveIdleTime: liveIdleTimeVal,
     liveFuelCount: num('live_fuel_count','liveFuelCount'),
-    updatedAt: get('updated_at','updatedAt') ? (get('updated_at','updatedAt') instanceof Date ? get('updated_at','updatedAt').toISOString() : String(get('updated_at','updatedAt'))) : null,
+    fuelPrice: num('fuel_price','fuelPrice'),
+    idleMoneyWasted: num('idle_money_wasted','idleMoneyWasted'),
+    // Prefer DB-stored `speeding_fuel_wasted` (snake) or `speedingFuelWasted` (camel)
+    speedingFuelLoss: num('speeding_fuel_wasted','speedingFuelWasted') || num('speeding_fuel_loss','speedingFuelLoss'),
+    // Speeding money loss is derived as fuel loss * 100 (currency units per liter)
+    speedingMoneyLoss: (num('speeding_fuel_wasted','speedingFuelWasted') || num('speeding_fuel_loss','speedingFuelLoss')) * 100,
+    theftFuelLoss: num('theft_fuel_loss','theftFuelLoss'),
+    theftMoneyLoss: num('theft_money_loss','theftMoneyLoss'),
     // removed legacy w1..w6 fields
   };
 };
