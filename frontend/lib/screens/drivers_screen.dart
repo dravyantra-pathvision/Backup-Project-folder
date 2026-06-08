@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import '../models/engine.dart';
 import '../core/theme.dart';
-
 import 'package:fl_chart/fl_chart.dart';
 
 class DriversScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class DriversScreen extends StatefulWidget {
 class _DriversScreenState extends State<DriversScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   Driver? _detailDriver;
+  final ScrollController _tableScrollController = ScrollController();
 
   @override
   Widget build(BuildContext context) {
@@ -77,19 +79,32 @@ class _DriversScreenState extends State<DriversScreen> {
   }
 
   Widget _buildKpis(List<Driver> drivers) {
-    int onDuty = drivers.where((d) => d.status == 'on_duty' && d.isActive).length;
+    final engine = context.read<DataEngine>();
+    bool isAssigned(Driver d) => d.vehicle.isNotEmpty && d.vehicle != 'None' && d.vehicle != 'Unassigned';
+    int onDuty = drivers.where((d) {
+      if (!d.isActive) return false;
+      // consider driver active if they have an active trip (by id or name)
+      final hasActiveTrip = engine.trips.any((t) {
+        final driverKey = (t.driver ?? '').toString().trim().toLowerCase();
+        final matchId = d.id.trim().toLowerCase();
+        final matchName = d.name.trim().toLowerCase();
+        final activeByStatus = (t.tripCompleted != true) && (t.status != 'completed') && (t.status != 'cancelled');
+        return activeByStatus && (driverKey == matchId || driverKey == matchName);
+      });
+      return hasActiveTrip || isAssigned(d);
+    }).length;
     int atRisk = drivers.where((d) => d.score < 60 && d.isActive).length;
     int avgScore = drivers.isEmpty ? 0 : drivers.map((d) => d.score).reduce((a, b) => a + b) ~/ drivers.length;
 
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _kpiCard('Total Drivers', '${drivers.length}', 'enrolled', AppTheme.primaryBlue),
-        _kpiCard('On Duty Now', '$onDuty', 'active', AppTheme.success),
-        _kpiCard('Fleet Avg Score', '$avgScore/100', 'live', Colors.deepPurple),
-        _kpiCard('At-Risk Drivers', '$atRisk', 'score < 60', AppTheme.danger),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _kpiCard('Total Drivers', '${drivers.length}', 'enrolled', AppTheme.primaryBlue),
+          const SizedBox(width: 12),
+          _kpiCard('On Duty Now', '$onDuty', 'active', AppTheme.success),
+        ],
+      ),
     );
   }
 
@@ -117,33 +132,80 @@ class _DriversScreenState extends State<DriversScreen> {
 
   Widget _buildLeaderboardTable(BuildContext context, List<Driver> drivers) {
     return Card(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
-          columns: const [
-            DataColumn(label: Text('Rank')),
-            DataColumn(label: Text('Name')),
-            DataColumn(label: Text('Score')),
-            DataColumn(label: Text('Mileage')),
-            DataColumn(label: Text('Trips')),
-          ],
-          rows: drivers.asMap().entries.map((entry) {
-            final index = entry.key;
-            final d = entry.value;
-            return DataRow(cells: [
-              DataCell(Text('#${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold))),
-              DataCell(Text(d.name)),
-              DataCell(Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: (d.score >= 75 ? AppTheme.success : d.score >= 55 ? AppTheme.warning : AppTheme.danger).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                child: Text('${d.score}', style: TextStyle(color: d.score >= 75 ? AppTheme.success : d.score >= 55 ? AppTheme.warning : AppTheme.danger, fontWeight: FontWeight.bold)),
-              )),
-              DataCell(Text('${d.mil.toStringAsFixed(1)} km/L')),
-              DataCell(Text('${d.trips}')),
-            ]);
-          }).toList(),
-        ),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final engine = context.read<DataEngine>();
+          return Scrollbar(
+            controller: _tableScrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _tableScrollController,
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: DataTable(
+                  columnSpacing: 20,
+                  horizontalMargin: 12,
+                  headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                  columns: const [
+                    DataColumn(label: Text('Rank')),
+                    DataColumn(label: Text('Name')),
+                    DataColumn(label: Text('Score')),
+                    DataColumn(label: Text('Trips')),
+                    DataColumn(label: Text('View / Edit / Remove')),
+                  ],
+                  rows: drivers.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final d = entry.value;
+                    return DataRow(cells: [
+                      DataCell(Text('#${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                      DataCell(Text(d.name)),
+                      DataCell(Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: (d.score >= 75 ? AppTheme.success : d.score >= 55 ? AppTheme.warning : AppTheme.danger).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                        child: Text('${d.score}', style: TextStyle(color: d.score >= 75 ? AppTheme.success : d.score >= 55 ? AppTheme.warning : AppTheme.danger, fontWeight: FontWeight.bold)),
+                      )),
+                      DataCell(Text('${d.trips}')),
+                      DataCell(Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(LucideIcons.eye, size: 18), 
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text(d.name),
+                                  content: Text('Phone: ${d.phone}\nAge: ${d.age}\nExperience: ${d.exp} years\nLicense: ${d.lic}'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+                                  ],
+                                ),
+                              );
+                            }
+                          ),
+                          IconButton(
+                            icon: const Icon(LucideIcons.edit2, size: 18), 
+                            onPressed: () => _showDriverForm(context, engine, d: d)
+                          ),
+                          IconButton(
+                            icon: const Icon(LucideIcons.trash2, size: 18, color: AppTheme.danger), 
+                            onPressed: () async {
+                              await engine.removeDriver(d.id);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('${d.name} removed')),
+                              );
+                            }
+                          ),
+                        ],
+                      )),
+                    ]);
+                  }).toList(),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -192,54 +254,228 @@ class _DriversScreenState extends State<DriversScreen> {
     );
   }
 
-  Widget _miniStat(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: AppTheme.background, borderRadius: BorderRadius.circular(4)),
-      child: Column(
+  void _showDriverForm(BuildContext context, DataEngine engine, {Driver? d}) {
+    showDialog(
+      context: context,
+      builder: (context) => _DriverFormDialog(engine: engine, driver: d),
+    );
+  }
+}
+
+class _DriverFormDialog extends StatefulWidget {
+  final DataEngine engine;
+  final Driver? driver;
+
+  const _DriverFormDialog({required this.engine, this.driver});
+
+  @override
+  State<_DriverFormDialog> createState() => _DriverFormDialogState();
+}
+
+class _DriverFormDialogState extends State<_DriverFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _nameCtrl;
+  late TextEditingController _phoneCtrl;
+  late TextEditingController _ageCtrl;
+
+  String? _aadharFileUrl;
+  String? _licenseFileUrl;
+
+  bool _aadharUploading = false;
+  bool _licenseUploading = false;
+
+  bool _aadharUploaded = false;
+  bool _licenseUploaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.driver?.name ?? '');
+    _phoneCtrl = TextEditingController(text: widget.driver?.phone ?? '');
+    _ageCtrl = TextEditingController(text: widget.driver?.age.toString() ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _ageCtrl.dispose();
+    super.dispose();
+  }
+
+  Widget _buildUploadRow(String label, bool isUploaded, bool isUploading, VoidCallback onUpload) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
         children: [
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-          Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isUploaded ? AppTheme.success.withOpacity(0.1) : null,
+              foregroundColor: isUploaded ? AppTheme.success : null,
+              elevation: 0,
+            ),
+            icon: isUploading
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(isUploaded ? LucideIcons.checkCircle : LucideIcons.upload, size: 16),
+            label: Text(isUploading ? 'Uploading...' : isUploaded ? 'Uploaded' : 'Upload File'),
+            onPressed: isUploading ? null : onUpload,
+          ),
         ],
       ),
     );
   }
 
-  void _showDriverForm(BuildContext context, DataEngine engine, {Driver? d}) {
-    final name = TextEditingController(text: d?.name ?? '');
-    final phone = TextEditingController(text: d?.phone ?? '');
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(d == null ? 'Add New Driver' : 'Edit Driver'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Full Name')),
-            TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone Number')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (d == null) {
-                engine.addDriver(Driver(
-                  id: 'DRV-${1000 + engine.drivers.length + 1}', name: name.text, phone: phone.text,
-                  age: 30, exp: 5, lic: 'NEW12345', licExp: '2030-01-01', blood: 'B+', vehicle: '', status: 'idle',
-                  score: 100, mil: 0, idle: 0, trips: 0, harsh: 0, overSpeed: 0, deviation: 0, fuelEff: 100,
-                  rating: 5.0, home: 'N/A', onLeave: false
-                ));
-              } else {
-                engine.updateDriver(d.copyWith());
-              }
-              Navigator.pop(context);
-            }, 
-            child: const Text('Save')
+  Future<void> _pickAndUpload(String docType) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+
+      final driverName = _nameCtrl.text.trim().replaceAll(' ', '_');
+      final fileName = '${driverName}_${docType}_${DateTime.now().millisecondsSinceEpoch}.${file.extension}';
+
+      setState(() {
+        if (docType == 'aadhar') _aadharUploading = true;
+        if (docType == 'license') _licenseUploading = true;
+      });
+
+      // Upload via backend (uses service_role key, bypasses RLS)
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('http://localhost:3000/api/upload?bucket=driver_docs'),
+      );
+      request.files.add(http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: fileName,
+      ));
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode != 200) {
+        throw Exception('Server error: ${response.body}');
+      }
+
+      final responseData = response.body;
+      final url = RegExp(r'"url":"([^"]+)"').firstMatch(responseData)?.group(1) ?? '';
+
+      setState(() {
+        if (docType == 'aadhar') { _aadharFileUrl = url; _aadharUploaded = true; _aadharUploading = false; }
+        if (docType == 'license') { _licenseFileUrl = url; _licenseUploaded = true; _licenseUploading = false; }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$docType uploaded successfully!'), backgroundColor: AppTheme.success),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        if (docType == 'aadhar') _aadharUploading = false;
+        if (docType == 'license') _licenseUploading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppTheme.danger),
+        );
+      }
+    }
+  }
+
+  void _save() {
+    if (_formKey.currentState!.validate()) {
+      if (widget.driver == null) {
+        widget.engine.addDriver(Driver(
+          id: 'DRV-${1000 + widget.engine.drivers.length + 1}', 
+          name: _nameCtrl.text, 
+          phone: _phoneCtrl.text,
+          age: int.tryParse(_ageCtrl.text) ?? 30, 
+          exp: 5, 
+          lic: 'NEW12345', 
+          licExp: '2030-01-01', 
+          blood: 'B+', 
+          vehicle: '', 
+          status: 'idle',
+          score: 0, mil: 0, idle: 0, trips: 0, harsh: 0, overSpeed: 0, deviation: 0, fuelEff: 100,
+          rating: 5.0, home: 'N/A', onLeave: false,
+          imageUrl: _aadharFileUrl ?? _licenseFileUrl,
+        ));
+      } else {
+        widget.engine.updateDriver(widget.driver!.copyWith());
+      }
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.driver == null ? 'Add New Driver' : 'Edit Driver'),
+      content: SizedBox(
+        width: 400,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: _nameCtrl, 
+                  decoration: const InputDecoration(labelText: 'Full Name'),
+                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _ageCtrl, 
+                  decoration: const InputDecoration(labelText: 'Age'),
+                  keyboardType: TextInputType.number,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    final age = int.tryParse(v);
+                    if (age == null) return 'Invalid number';
+                    if (age <= 18) return 'Age must be greater than 18';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phoneCtrl, 
+                  decoration: const InputDecoration(labelText: 'Phone Number'),
+                  keyboardType: TextInputType.phone,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Required';
+                    final regExp = RegExp(r'^(?:\+91)?[6-9]\d{9}$');
+                    if (!regExp.hasMatch(v)) return 'Invalid Indian phone number (e.g., 9876543210 or +919876543210)';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+                const Text('Documents', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const Divider(),
+                _buildUploadRow('Aadhar Card', _aadharUploaded, _aadharUploading, () => _pickAndUpload('aadhar')),
+                _buildUploadRow('Driving License', _licenseUploaded, _licenseUploading, () => _pickAndUpload('license')),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary))),
+        ElevatedButton(
+          onPressed: _save,
+          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
+          child: const Text('Save Driver')
+        ),
+      ],
     );
   }
 }
@@ -251,8 +487,62 @@ class _DriverDetailDrawer extends StatelessWidget {
 
   const _DriverDetailDrawer({required this.driver, required this.onClose, required this.onDeactivate});
 
+  String _normalize(String value) => value.trim().toLowerCase().replaceAll('_', ' ');
+
+  Trip? _activeTripForDriver(DataEngine engine) {
+    final driverName = driver.name.trim().toLowerCase();
+    for (final trip in engine.trips) {
+      final tripDriver = trip.driver.trim().toLowerCase();
+      final status = _normalize(trip.status);
+      final activeByStatus = status != 'completed' && status != 'cancelled';
+      if (trip.tripCompleted != true && activeByStatus && tripDriver == driverName) {
+        return trip;
+      }
+    }
+    return null;
+  }
+
+  Color _tripStatusColor(String status) {
+    final normalized = _normalize(status);
+    if (normalized == 'completed') return AppTheme.ecoGreen;
+    if (normalized == 'running') return Colors.blue;
+    if (normalized == 'idle') return Colors.orange;
+    if (normalized == 'pending' || normalized == 'not started') return Colors.orange;
+    if (normalized == 'cancelled') return AppTheme.danger;
+    return AppTheme.warning;
+  }
+
+  bool _isAssignedDriver() {
+    return driver.vehicle.isNotEmpty && driver.vehicle != 'None' && driver.vehicle != 'Unassigned';
+  }
+
+  String _statusLabelFromTripOrDriver(DataEngine engine) {
+    final trip = _activeTripForDriver(engine);
+    if (trip != null) {
+      return trip.status.replaceAll('_', ' ').toUpperCase();
+    }
+    if (_isAssignedDriver()) {
+      return 'ON DUTY';
+    }
+    return driver.status.replaceAll('_', ' ').toUpperCase();
+  }
+
+  Color _statusColorFromTripOrDriver(DataEngine engine) {
+    final trip = _activeTripForDriver(engine);
+    if (trip != null) {
+      return _tripStatusColor(trip.status);
+    }
+    if (_isAssignedDriver()) {
+      return AppTheme.success;
+    }
+    return _tripStatusColor(driver.status);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final engine = context.watch<DataEngine>();
+    final statusLabel = driver.isActive ? _statusLabelFromTripOrDriver(engine) : 'INACTIVE';
+    final statusColor = driver.isActive ? _statusColorFromTripOrDriver(engine) : AppTheme.textSecondary;
     return Drawer(
       width: 450,
       child: Column(
@@ -274,7 +564,7 @@ class _DriverDetailDrawer extends StatelessWidget {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    _Badge(label: driver.isActive ? driver.status.replaceAll('_', ' ').toUpperCase() : 'INACTIVE', color: driver.isActive ? AppTheme.success : AppTheme.textSecondary),
+                    _Badge(label: statusLabel, color: statusColor),
                     const SizedBox(width: 8),
                     _Badge(label: 'Score: ${driver.score}', color: driver.score >= 75 ? AppTheme.success : AppTheme.warning),
                   ],
@@ -332,7 +622,7 @@ class _DriverDetailDrawer extends StatelessWidget {
                 const SizedBox(height: 16),
                 _InfoRow(label: 'Phone', value: driver.phone, icon: LucideIcons.phone),
                 _InfoRow(label: 'License No', value: driver.lic, icon: LucideIcons.creditCard),
-                _InfoRow(label: 'License Expiry', value: driver.licExp, icon: LucideIcons.calendar, color: DateTime.parse(driver.licExp).difference(DateTime.now()).inDays < 60 ? AppTheme.danger : null),
+                _InfoRow(label: 'License Expiry', value: driver.licExp, icon: LucideIcons.calendar, color: (() { try { return driver.licExp.isNotEmpty && DateTime.parse(driver.licExp).difference(DateTime.now()).inDays < 60 ? AppTheme.danger : null; } catch (_) { return null; } })()),
                 _InfoRow(label: 'Blood Group', value: driver.blood, icon: LucideIcons.droplets),
                 _InfoRow(label: 'Home Town', value: driver.home, icon: LucideIcons.home),
                 const Divider(height: 48),

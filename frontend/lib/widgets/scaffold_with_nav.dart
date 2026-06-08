@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../core/theme.dart';
+import '../models/engine.dart';
 
 class ScaffoldWithNav extends StatelessWidget {
   final Widget child;
@@ -12,22 +14,29 @@ class ScaffoldWithNav extends StatelessWidget {
   int _calculateSelectedIndex(BuildContext context) {
     final String location = GoRouterState.of(context).uri.toString();
     if (location.startsWith('/dashboard')) return 0;
-    if (location.startsWith('/live-tracking')) return 1;
-    if (location.startsWith('/vehicles')) return 2;
-    if (location.startsWith('/fuel')) return 3;
-    if (location.startsWith('/alerts')) return 4;
-    if (location.startsWith('/settings')) return 5;
+    if (location.startsWith('/vehicles')) return 1;
+    if (location.startsWith('/drivers')) return 2;
+    if (location.startsWith('/trips')) return 3;
+    if (location.startsWith('/settings')) return 4;
     return 0; // Default
+  }
+
+  bool _isNavActive(BuildContext context) {
+    final String location = GoRouterState.of(context).uri.toString();
+    return location.startsWith('/dashboard') ||
+           location.startsWith('/vehicles') ||
+           location.startsWith('/drivers') ||
+           location.startsWith('/trips') ||
+           location.startsWith('/settings');
   }
 
   void _onItemTapped(int index, BuildContext context) {
     switch (index) {
       case 0: context.go('/dashboard'); break;
-      case 1: context.go('/live-tracking'); break;
-      case 2: context.go('/vehicles'); break;
-      case 3: context.go('/fuel'); break;
-      case 4: context.go('/alerts'); break;
-      case 5: context.go('/settings'); break;
+      case 1: context.go('/vehicles'); break;
+      case 2: context.go('/drivers'); break;
+      case 3: context.go('/trips'); break;
+      case 4: context.go('/settings'); break;
     }
   }
 
@@ -36,6 +45,8 @@ class ScaffoldWithNav extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isSmallScreen = constraints.maxWidth < 800;
+        final bool isNavActive = _isNavActive(context);
+        final int activeIndex = _calculateSelectedIndex(context);
 
         return Scaffold(
           appBar: AppBar(
@@ -47,10 +58,36 @@ class ScaffoldWithNav extends StatelessWidget {
               ),
             ) : null,
             actions: [
-              IconButton(
-                icon: const Icon(LucideIcons.bell), 
-                onPressed: () => context.go('/alerts'),
-                tooltip: 'Alerts',
+              Consumer<DataEngine>(
+                builder: (context, engine, child) {
+                  final hasAlerts = engine.hasNewAlerts && engine.alerts.any((a) => a.status == AlertStatus.pending);
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      IconButton(
+                        icon: Icon(LucideIcons.bell, color: hasAlerts ? Colors.black : null), 
+                        onPressed: () {
+                          engine.markAlertsAsRead();
+                          context.go('/alerts');
+                        },
+                        tooltip: 'Alerts',
+                      ),
+                      if (hasAlerts)
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.orange, // Orange dot
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(width: 16),
             ],
@@ -60,7 +97,7 @@ class ScaffoldWithNav extends StatelessWidget {
             children: [
               if (!isSmallScreen)
                 NavigationRail(
-                  selectedIndex: _calculateSelectedIndex(context),
+                  selectedIndex: isNavActive ? activeIndex : null,
                   onDestinationSelected: (index) => _onItemTapped(index, context),
                   labelType: NavigationRailLabelType.all,
                   selectedIconTheme: const IconThemeData(color: AppTheme.primaryBlue),
@@ -69,31 +106,19 @@ class ScaffoldWithNav extends StatelessWidget {
                   unselectedLabelTextStyle: const TextStyle(color: AppTheme.textSecondary),
                   destinations: const [
                     NavigationRailDestination(icon: Icon(LucideIcons.layoutDashboard), label: Text('Dashboard')),
-                    NavigationRailDestination(icon: Icon(LucideIcons.map), label: Text('Tracking')),
                     NavigationRailDestination(icon: Icon(LucideIcons.truck), label: Text('Vehicles')),
-                    NavigationRailDestination(icon: Icon(LucideIcons.fuel), label: Text('Fuel')),
-                    NavigationRailDestination(icon: Icon(LucideIcons.alertTriangle), label: Text('Alerts')),
+                    NavigationRailDestination(icon: Icon(LucideIcons.users), label: Text('Drivers')),
+                    NavigationRailDestination(icon: Icon(LucideIcons.mapPin), label: Text('Trips')),
                     NavigationRailDestination(icon: Icon(LucideIcons.settings), label: Text('Settings')),
                   ],
                 ),
               if (!isSmallScreen) const VerticalDivider(thickness: 1, width: 1),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 100),
-                  transitionBuilder: (Widget child, Animation<double> animation) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
-                  child: KeyedSubtree(
-                    key: ValueKey<int>(_calculateSelectedIndex(context)),
-                    child: child,
-                  ),
-                ),
-              ),
+              Expanded(child: child),
             ],
           ),
           bottomNavigationBar: isSmallScreen
               ? BottomNavigationBar(
-                  currentIndex: _calculateSelectedIndex(context) > 4 ? 4 : _calculateSelectedIndex(context), // Limit to 5 items for bottom nav
+                  currentIndex: activeIndex > 4 ? 4 : activeIndex, // Limit to 5 items for bottom nav
                   onTap: (index) {
                      if (index == 4) {
                        context.go('/settings'); 
@@ -102,20 +127,20 @@ class ScaffoldWithNav extends StatelessWidget {
                      }
                   },
                   type: BottomNavigationBarType.fixed,
-                  selectedItemColor: AppTheme.primaryBlue,
+                  selectedItemColor: isNavActive ? AppTheme.primaryBlue : AppTheme.textSecondary,
                   unselectedItemColor: AppTheme.textSecondary,
                   items: [
                     const BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard), label: 'Dashboard'),
-                    const BottomNavigationBarItem(icon: Icon(LucideIcons.map), label: 'Tracking'),
                     const BottomNavigationBarItem(icon: Icon(LucideIcons.truck), label: 'Vehicles'),
-                    const BottomNavigationBarItem(icon: Icon(LucideIcons.fuel), label: 'Fuel'),
+                    const BottomNavigationBarItem(icon: Icon(LucideIcons.users), label: 'Drivers'),
+                    const BottomNavigationBarItem(icon: Icon(LucideIcons.mapPin), label: 'Trips'),
                     BottomNavigationBarItem(
                       icon: Container(
                         padding: const EdgeInsets.all(2),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: _calculateSelectedIndex(context) >= 4 ? AppTheme.primaryBlue : Colors.transparent, 
+                            color: (isNavActive && activeIndex >= 4) ? AppTheme.primaryBlue : Colors.transparent, 
                             width: 2
                           ),
                         ),
@@ -145,6 +170,7 @@ class _AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
+      width: MediaQuery.of(context).size.width * 0.75,
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
@@ -155,15 +181,12 @@ class _AppDrawer extends StatelessWidget {
               style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
-          const _DrawerItem(icon: LucideIcons.layoutDashboard, title: 'Dashboard', path: '/dashboard'),
-          const _DrawerItem(icon: LucideIcons.map, title: 'Live Tracking', path: '/live-tracking'),
-          const _DrawerItem(icon: LucideIcons.truck, title: 'Vehicles', path: '/vehicles'),
-          const _DrawerItem(icon: LucideIcons.users, title: 'Drivers', path: '/drivers'),
-          const _DrawerItem(icon: LucideIcons.mapPin, title: 'Trips', path: '/trips'),
-          const _DrawerItem(icon: LucideIcons.fuel, title: 'Fuel Management', path: '/fuel'),
+
+          const _DrawerItem(icon: LucideIcons.map, title: 'Tracking', path: '/live-tracking'),
           const _DrawerItem(icon: LucideIcons.alertTriangle, title: 'Alerts', path: '/alerts'),
           const _DrawerItem(icon: LucideIcons.barChart2, title: 'Analytics', path: '/analytics'),
           const _DrawerItem(icon: LucideIcons.fileText, title: 'Reports', path: '/reports'),
+          const _DrawerItem(icon: LucideIcons.fuel, title: 'Fuel', path: '/fuel'),
           const _DrawerItem(icon: LucideIcons.settings, title: 'Settings', path: '/settings'),
           const Divider(),
           ListTile(

@@ -20,6 +20,11 @@ dependencies:
   firebase_auth: ^5.7.0
   http: ^1.2.1
   video_player: ^2.8.2
+  shared_preferences: ^2.5.5
+  csv: ^8.0.0
+  path_provider: ^2.1.5
+  file_picker: ^8.0.0+1
+  supabase_flutter: ^2.5.0
 
 dev_dependencies:
   flutter_test:
@@ -30,11 +35,10 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/images/DY_Logo.png"
+  image_path: "assets/images/dravlogo.jpeg"
   min_sdk_size: 21
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
-    - assets/videos/

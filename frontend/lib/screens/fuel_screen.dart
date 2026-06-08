@@ -58,12 +58,7 @@ class _FuelScreenState extends State<FuelScreen> {
                     icon: const Icon(LucideIcons.download, size: 14),
                     label: const Text('Export CSV'),
                   ),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
-                    onPressed: () => _showLogForm(context, engine), 
-                    icon: const Icon(LucideIcons.plus, size: 14), 
-                    label: const Text('Log Fill-Up')
-                  ),
+
                 ],
               ),
             ],
@@ -71,7 +66,7 @@ class _FuelScreenState extends State<FuelScreen> {
           const SizedBox(height: 16),
           _buildKpis(totalSpend, totalLiters, suspectCount),
           const SizedBox(height: 16),
-          _buildAnomalyAlertsPanel(),
+          _buildAnomalyAlertsPanel(engine),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -122,7 +117,8 @@ class _FuelScreenState extends State<FuelScreen> {
     );
   }
 
-  Widget _buildAnomalyAlertsPanel() {
+  Widget _buildAnomalyAlertsPanel(DataEngine engine) {
+    final suspectLogs = engine.fuelLogs.where((l) => l.isSuspect).toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -137,8 +133,12 @@ class _FuelScreenState extends State<FuelScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _anomalyItem('MH 43 BP 2114', 'Excess fill: 120L vs 100L capacity', '2026-05-14'),
-            _anomalyItem('MH 01 AB 1234', 'Night-time fill (02:30 AM)', '2026-05-13'),
+            if (suspectLogs.isEmpty)
+              const Text('No anomalies detected', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13))
+            else
+              ...suspectLogs.map((l) => 
+                _anomalyItem(l.vehicle, l.suspectReason ?? 'Anomalous reading', l.date)
+              ).toList(),
           ],
         ),
       ),
@@ -148,16 +148,13 @@ class _FuelScreenState extends State<FuelScreen> {
   Widget _anomalyItem(String plate, String msg, String date) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           const Icon(Icons.circle, size: 6, color: AppTheme.danger),
-          const SizedBox(width: 8),
           Text(plate, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(msg, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-          ),
-          const SizedBox(width: 8),
+          Text(msg, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
           Text(date, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
         ],
       ),
@@ -165,14 +162,23 @@ class _FuelScreenState extends State<FuelScreen> {
   }
 
   Widget _buildKpis(double spend, double liters, int suspect) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
+    return Column(
       children: [
-        _kpiCard('Total Spend', '₹${spend.toStringAsFixed(0)}', 'Budget: ₹6,65,000', AppTheme.primaryBlue),
-        _kpiCard('Total Consumed', '${liters.toStringAsFixed(0)} L', 'Avg rate: ₹92.5/L', AppTheme.success),
-        _kpiCard('Fleet Avg Mileage', '4.2 km/L', 'Target: 4.5 km/L', Colors.deepPurple),
-        _kpiCard('Suspect Logs', '$suspect', 'Flagged for review', AppTheme.danger),
+        Row(
+          children: [
+            Expanded(child: _kpiCard('Total Spend', '₹${spend.toStringAsFixed(0)}', 'Budget: ₹6,65,000', AppTheme.primaryBlue)),
+            const SizedBox(width: 12),
+            Expanded(child: _kpiCard('Total Consumed', '${liters.toStringAsFixed(0)} L', 'Avg rate: ₹92.5/L', AppTheme.success)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _kpiCard('Fleet Avg Mileage', '4.2 km/L', 'Target: 4.5 km/L', Colors.deepPurple)),
+            const SizedBox(width: 12),
+            Expanded(child: _kpiCard('Suspect Logs', '$suspect', 'Flagged for review', AppTheme.danger)),
+          ],
+        ),
       ],
     );
   }

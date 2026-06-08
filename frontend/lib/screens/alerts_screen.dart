@@ -62,7 +62,23 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 runSpacing: 8,
                 children: [
                   TextButton.icon(
-                    onPressed: () => engine.dismissAllAlerts(),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        final ok = await engine.clearAllAlerts();
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? 'All alerts cleared' : 'Failed to clear alerts'),
+                            backgroundColor: ok ? AppTheme.success : AppTheme.danger,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: const Text('Error clearing alerts'), backgroundColor: AppTheme.danger),
+                        );
+                      }
+                    },
                     icon: const Icon(LucideIcons.trash2, size: 14),
                     label: const Text('Clear All'),
                     style: TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),
@@ -78,10 +94,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildNotificationSettings(),
-          const SizedBox(height: 16),
-          _buildPerTypeTogglesPanel(engine),
-          const SizedBox(height: 16),
+
           _buildKpis(activeAlerts.length, critical, warning),
           const SizedBox(height: 16),
           _buildFilters(),
@@ -227,20 +240,70 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 
   Widget _buildFilters() {
-    return Wrap(
-      spacing: 8,
-      children: [
-        FilterChip(label: const Text('All'), selected: _filter == 'all', onSelected: (s) => setState(() => _filter = 'all')),
-        FilterChip(label: const Text('Critical'), selected: _filter == 'critical', onSelected: (s) => setState(() => _filter = 'critical')),
-        FilterChip(label: const Text('Warnings'), selected: _filter == 'warnings', onSelected: (s) => setState(() => _filter = 'warnings')),
-        const SizedBox(width: 16),
-        ...AlertCategory.values.map((cat) => FilterChip(
-          label: Text(cat.name.toUpperCase()),
-          selected: _categoryFilter == cat,
-          onSelected: (s) => setState(() => _categoryFilter = s ? cat : null),
-          selectedColor: AppTheme.primaryBlue.withOpacity(0.2),
-        )),
-      ],
+    final List<DropdownMenuItem<String>> items = [
+      const DropdownMenuItem(value: 'all', child: Text('All')),
+      const DropdownMenuItem(value: 'critical', child: Text('Critical')),
+      const DropdownMenuItem(value: 'warnings', child: Text('Warnings')),
+      ...AlertCategory.values.map((cat) => DropdownMenuItem(
+        value: 'cat_${cat.name}',
+        child: Text(cat.name.toUpperCase()),
+      )),
+    ];
+
+    String currentValue = 'all';
+    if (_categoryFilter != null) {
+      currentValue = 'cat_${_categoryFilter!.name}';
+    } else if (_filter != 'all') {
+      currentValue = _filter;
+    }
+
+    return Card(
+      elevation: 4,
+      shadowColor: Colors.black12,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: currentValue,
+            isExpanded: true,
+            icon: const Icon(Icons.arrow_drop_down, color: AppTheme.textSecondary),
+            hint: Row(
+              children: [
+                const Icon(Icons.search, color: AppTheme.textSecondary),
+                const SizedBox(width: 12),
+                const Text('Search for alert type...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+              ],
+            ),
+            selectedItemBuilder: (BuildContext context) {
+              return items.map((item) {
+                return Row(
+                  children: [
+                    const Icon(Icons.search, color: AppTheme.textSecondary),
+                    const SizedBox(width: 12),
+                    item.child!,
+                  ],
+                );
+              }).toList();
+            },
+            items: items,
+            onChanged: (String? val) {
+              if (val != null) {
+                setState(() {
+                  if (val == 'all' || val == 'critical' || val == 'warnings') {
+                    _filter = val;
+                    _categoryFilter = null;
+                  } else if (val.startsWith('cat_')) {
+                    _filter = 'all';
+                    final catName = val.substring(4);
+                    _categoryFilter = AlertCategory.values.firstWhere((c) => c.name == catName);
+                  }
+                });
+              }
+            },
+          ),
+        ),
+      ),
     );
   }
 

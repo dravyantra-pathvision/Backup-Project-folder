@@ -1,0 +1,84 @@
+[
+  {
+    "status": "pending",
+    "id": "TRP-4406:1780546868478",
+    "detectedAt": "2026-06-04T04:21:08.478Z",
+    "tripId": "TRP-4406",
+    "vehiclePlate": "MH 99 AA 9999",
+    "driver": "oggy",
+    "type": "rash_driving",
+    "message": "MH 99 AA 9999 is driving rashly at speed 100",
+    "prevSpeed": 0,
+    "newSpeed": 100
+  },
+  {
+    "status": "pending",
+    "id": "TRP-4405:1780546796851",
+    "detectedAt": "2026-06-04T04:19:56.851Z",
+    "tripId": "TRP-4405",
+    "vehiclePlate": "MP 09 HH 6439",
+    "driver": "oliviya",
+    "type": "rash_driving",
+    "message": "MP 09 HH 6439 is driving rashly at speed 100",
+    "prevSpeed": 0,
+    "newSpeed": 100
+  },
+  {
+    "status": "pending",
+    "id": "TRP-4410:1780482732600",
+    "detectedAt": "2026-06-03T10:32:12.600Z",
+    "tripId": "TRP-4410",
+    "vehiclePlate": "MH 01 AB 1234",
+    "driver": "HEHE",
+    "type": "idle",
+    "message": "Vehicle entered idle state",
+    "prevStatus": "not_started",
+    "newStatus": "idle"
+  },
+  {
+    "status": "pending",
+    "id": "TRP-4406:1780482729059",
+    "detectedAt": "2026-06-03T10:32:09.059Z",
+    "tripId": "TRP-4406",
+    "vehiclePlate": "MH 99 AA 9999",
+    "driver": "oggy",
+    "type": "idle",
+    "message": "Vehicle entered idle state",
+    "prevStatus": "not_started",
+    "newStatus": "idle"
+  },
+  {
+    "status": "pending",
+    "id": "TRP-4405:1780482725279",
+    "detectedAt": "2026-06-03T10:32:05.279Z",
+    "tripId": "TRP-4405",
+    "vehiclePlate": "MP 09 HH 6439",
+    "driver": "oliviya",
+    "type": "idle",
+    "message": "Vehicle entered idle state",
+    "prevStatus": "not_started",
+    "newStatus": "idle"
+  },
+  {
+    "status": "pending",
+    "id": "TRP-4404:1780482682357",
+    "detectedAt": "2026-06-03T10:31:22.357Z",
+    "tripId": "TRP-4404",
+    "vehiclePlate": "TG 32 HS 8976",
+    "driver": "bob",
+    "type": "idle",
+    "message": "Vehicle entered idle state",
+    "prevStatus": "running",
+    "newStatus": "idle"
+  },
+  {
+    "status": "pending",
+    "trip": "TG 32 HS 8976",
+    "type": "rash_driving",
+    "message": "Rash driving: Speed 100 km/h (Limit: 80 km/h)",
+    "severity": "danger",
+    "driver": "local",
+    "detectedAt": "2026-06-03T15:53:32.782233",
+    "time": "2026-06-03T10:23:32.784Z"
+  }
+]

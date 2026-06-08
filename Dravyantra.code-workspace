@@ -1,0 +1,10 @@
+{
+  "folders": [
+    {
+      "path": "Dravyantra\\DravYantra-main"
+    }
+  ],
+  "settings": {
+    "terminal.integrated.cwd": "${workspaceFolder}"
+  }
+}

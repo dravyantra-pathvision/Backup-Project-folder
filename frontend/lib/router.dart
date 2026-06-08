@@ -40,7 +40,7 @@ NoTransitionPage buildNoTransitionPage<T>({
   required Widget child,
 }) {
   return NoTransitionPage<T>(
-    key: state.pageKey,
+    key: ValueKey(state.uri.toString()),
     child: child,
   );
 }

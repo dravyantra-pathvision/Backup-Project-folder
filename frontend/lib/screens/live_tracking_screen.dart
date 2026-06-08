@@ -113,85 +113,119 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         ),
         // Filter Chips
         Positioned(
-          top: 100,
-          left: 16,
-          right: 16,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _FilterChip(
-                  label: 'All',
-                  count: engine.vehicles.length,
-                  isSelected: _selectedFilter == 'all',
-                  onTap: () => setState(() => _selectedFilter = 'all'),
-                ),
-                _FilterChip(
-                  label: 'Running',
-                  count: engine.vehicles.where((v) => v.status == 'running').length,
-                  isSelected: _selectedFilter == 'running',
-                  color: AppTheme.success,
-                  onTap: () => setState(() => _selectedFilter = 'running'),
-                ),
-                _FilterChip(
-                  label: 'Idle',
-                  count: engine.vehicles.where((v) => v.status == 'idle').length,
-                  isSelected: _selectedFilter == 'idle',
-                  color: AppTheme.warning,
-                  onTap: () => setState(() => _selectedFilter = 'idle'),
-                ),
-                _FilterChip(
-                  label: 'Offline',
-                  count: 0,
-                  isSelected: _selectedFilter == 'offline',
-                  color: AppTheme.textSecondary,
-                  onTap: () => setState(() => _selectedFilter = 'offline'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Search Bar (Original)
-        Positioned(
           top: 16,
           left: 16,
           right: 16,
-          child: Card(
-            elevation: 8,
-            shadowColor: Colors.black26,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  const Icon(Icons.search, color: AppTheme.textSecondary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: const InputDecoration(
-                        hintText: 'Search vehicle, driver, or model...',
-                        border: InputBorder.none,
-                        hintStyle: TextStyle(color: AppTheme.textSecondary),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Card(
+                elevation: 8,
+                shadowColor: Colors.black26,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _searchController.text.isNotEmpty ? _searchController.text : null,
+                      isExpanded: true,
+                      icon: const Icon(Icons.arrow_drop_down, color: AppTheme.textSecondary),
+                      hint: Row(
+                        children: [
+                          const Icon(Icons.search, color: AppTheme.textSecondary),
+                          const SizedBox(width: 12),
+                          const Text('Select vehicle...', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(color: AppTheme.primaryBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.wifi, size: 14, color: AppTheme.primaryBlue),
+                                const SizedBox(width: 6),
+                                Text('${engine.vehicles.length} Active', style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      style: const TextStyle(fontSize: 14),
-                      onChanged: (val) => setState(() => _searchQuery = val),
+                      selectedItemBuilder: (BuildContext context) {
+                        return engine.vehicles.map((Vehicle v) {
+                          return Row(
+                            children: [
+                              const Icon(Icons.search, color: AppTheme.textSecondary),
+                              const SizedBox(width: 12),
+                              Text(v.plate, style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(color: AppTheme.primaryBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.wifi, size: 14, color: AppTheme.primaryBlue),
+                                    const SizedBox(width: 6),
+                                    Text('${engine.vehicles.length} Active', style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList();
+                      },
+                      items: engine.vehicles.map((Vehicle v) {
+                        return DropdownMenuItem<String>(
+                          value: v.plate,
+                          child: Text(v.plate),
+                        );
+                      }).toList(),
+                      onChanged: (String? plate) {
+                        if (plate != null) {
+                          _searchController.text = plate;
+                          setState(() => _searchQuery = plate);
+                          final v = engine.vehicles.firstWhere((e) => e.plate == plate);
+                          engine.selectVehicle(v);
+                        }
+                      },
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: AppTheme.primaryBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.wifi, size: 14, color: AppTheme.primaryBlue),
-                        const SizedBox(width: 6),
-                        Text('${engine.vehicles.length} Active', style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    _FilterChip(
+                      label: 'All',
+                      count: engine.vehicles.length,
+                      isSelected: _selectedFilter == 'all',
+                      onTap: () => setState(() => _selectedFilter = 'all'),
+                    ),
+                    _FilterChip(
+                      label: 'Running',
+                      count: engine.vehicles.where((v) => v.status == 'running').length,
+                      isSelected: _selectedFilter == 'running',
+                      color: AppTheme.success,
+                      onTap: () => setState(() => _selectedFilter = 'running'),
+                    ),
+                    _FilterChip(
+                      label: 'Idle',
+                      count: engine.vehicles.where((v) => v.status == 'idle').length,
+                      isSelected: _selectedFilter == 'idle',
+                      color: AppTheme.warning,
+                      onTap: () => setState(() => _selectedFilter = 'idle'),
+                    ),
+                    _FilterChip(
+                      label: 'Offline',
+                      count: 0,
+                      isSelected: _selectedFilter == 'offline',
+                      color: AppTheme.textSecondary,
+                      onTap: () => setState(() => _selectedFilter = 'offline'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         // Selected Vehicle Panel
@@ -239,6 +273,7 @@ class _FilterChip extends StatelessWidget {
           border: isSelected ? null : Border.all(color: Colors.black12),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               label,
