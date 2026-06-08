@@ -1349,6 +1349,8 @@ class DataEngine extends ChangeNotifier {
   List<Vehicle> vehicles = [];
 
   List<Driver> drivers = [];
+
+  List<FuelLog> fuelLogs = [];
   // Queue for trip saves that failed due to backend unavailability
   final List<Trip> _pendingSaves = [];
   // Track last save timestamp per trip (epoch seconds) to throttle frequent updates
