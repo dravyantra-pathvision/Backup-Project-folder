@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'screens/splash_screen.dart';
+import 'screens/role_selection_screen.dart';
 
 import 'screens/signup_screen.dart';
 import 'screens/login_screen.dart';
@@ -47,8 +48,14 @@ NoTransitionPage buildNoTransitionPage<T>({
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
-  initialLocation: '/login',
+  initialLocation: '/role-selection',
   routes: [
+    GoRoute(
+      path: '/role-selection',
+      pageBuilder: (context, state) => buildPageWithDefaultTransition(
+        context: context, state: state, child: const RoleSelectionScreen()),
+    ),
+
     GoRoute(
       path: '/splash',
       pageBuilder: (context, state) => buildPageWithDefaultTransition(

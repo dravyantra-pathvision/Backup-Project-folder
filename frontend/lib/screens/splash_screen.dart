@@ -39,10 +39,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _animationController.forward();
 
-    // Navigate to role selection after 3 seconds
+    // Navigate to role selection after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
-        context.go('/login');
+        context.go('/role-selection');
       }
     });
   }

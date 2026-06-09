@@ -19,18 +19,55 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePass = true;
 
+  String _getRole(BuildContext context) {
+    try {
+      return GoRouterState.of(context).uri.queryParameters['role'] ?? 'fleet_owner';
+    } catch (_) {
+      return 'fleet_owner';
+    }
+  }
+
+  String _getRoleLabel(String role) {
+    switch (role) {
+      case 'fleet_owner':
+        return 'Fleet Owner';
+      case 'driver':
+        return 'Driver';
+      case 'admin':
+        return 'Admin Dashboard';
+      default:
+        return 'Fleet Owner';
+    }
+  }
+
   Future<void> _handleLogin() async {
     if (_email.text.isEmpty || _pass.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
+    final role = _getRole(context);
+
     // Demo credentials check (Bypass Firebase)
     final email = _email.text.trim();
     final pass = _pass.text;
     if ((email == 'admin@drav_yantra.com' && pass == 'password') || 
         (email == 'admin@gmail.com' && pass == 'admin123')) {
-      context.go('/dashboard');
+      if (role == 'driver') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Access Denied: Drivers are not permitted to access the fleet dashboard.'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+        context.go('/login?role=driver');
+        return;
+      }
+      if (role == 'admin') {
+        context.go('/admin');
+      } else {
+        context.go('/dashboard');
+      }
       return;
     }
 
@@ -52,11 +89,23 @@ class _LoginScreenState extends State<LoginScreen> {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
           },
-          body: jsonEncode({'full_name': user.displayName ?? 'User', 'role': 'fleet_owner'}),
+          body: jsonEncode({'full_name': user.displayName ?? 'User', 'role': role}),
         );
 
         if (mounted) {
-          context.go('/dashboard');
+          if (role == 'driver') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Access Denied: Drivers are not permitted to access the fleet dashboard.'),
+                backgroundColor: AppTheme.danger,
+              ),
+            );
+            context.go('/login?role=driver');
+          } else if (role == 'admin') {
+            context.go('/admin');
+          } else {
+            context.go('/dashboard');
+          }
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -70,6 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final role = _getRole(context);
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Center(
@@ -87,8 +137,15 @@ class _LoginScreenState extends State<LoginScreen> {
               const Icon(Icons.local_shipping, size: 48, color: AppTheme.primaryBlue),
               const SizedBox(height: 16),
               const Text('DravYantra', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue)),
-              const Text('Fleet Intelligence Platform', style: TextStyle(color: AppTheme.textSecondary)),
-              const SizedBox(height: 32),
+              const SizedBox(height: 4),
+              Text(
+                'Portal: ${_getRoleLabel(role)}',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 24),
               TextField(
                 controller: _email,
                 decoration: const InputDecoration(
@@ -128,11 +185,28 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {
-                  context.go('/signup');
-                },
-                child: const Text("Don't have an account? Sign Up", style: TextStyle(color: AppTheme.primaryBlue)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      context.go('/role-selection');
+                    },
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_back, size: 14, color: AppTheme.primaryBlue),
+                        SizedBox(width: 4),
+                        Text("Back", style: TextStyle(color: AppTheme.primaryBlue)),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      context.go('/signup');
+                    },
+                    child: const Text("Sign Up", style: TextStyle(color: AppTheme.primaryBlue)),
+                  ),
+                ],
               ),
             ],
           ),
