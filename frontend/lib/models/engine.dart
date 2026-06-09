@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:csv/csv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class Organization {
@@ -923,6 +924,7 @@ class DataEngine extends ChangeNotifier {
   };
 
   List<Alert> alerts = [];
+  List<FuelLog> fuelLogs = [];
 
   Future<void> addFuelLog(FuelLog log) async {
     // Find previous log for same vehicle
@@ -1513,7 +1515,7 @@ class DataEngine extends ChangeNotifier {
         rows.insert(0, <Object>['plate', 'model', 'year', 'type', 'status', 'driver', 'loc', 'speed', 'fuel', 'mil', 'idle', 'fastag', 'health', 'odo', 'nextService', 'insurance', 'permit', 'puc', 'lastFill', 'lat', 'lng', 'isActive', 'isBlacklisted', 'alerts', 'route', 'serviceHistory']);
         
         List<List<String>> stringRows = rows.map((r) => r.map((e) => e.toString()).toList()).toList();
-        String csv = Csv().encoder.convert(stringRows);
+        String csv = const ListToCsvConverter().convert(stringRows);
         
         final path = await _getFilePath('vehicles.csv');
         final File file = File(path);
@@ -1620,7 +1622,7 @@ class DataEngine extends ChangeNotifier {
         rows.insert(0, <Object>['id', 'name', 'phone', 'age', 'exp', 'lic', 'licExp', 'blood', 'vehicle', 'status', 'score', 'mil', 'idle', 'trips', 'harsh', 'overSpeed', 'deviation', 'fuelEff', 'rating', 'home', 'onLeave', 'isActive', 'tripHistory']);
         
         List<List<String>> stringRows = rows.map((r) => r.map((e) => e.toString()).toList()).toList();
-        String csv = Csv().encoder.convert(stringRows);
+        String csv = const ListToCsvConverter().convert(stringRows);
         
         final path = await _getFilePath('drivers.csv');
         final File file = File(path);
