@@ -12,7 +12,7 @@ const uploadFile = async (req, res) => {
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    const data = await uploadService.uploadFile(bucket, req.file);
+    const data = await uploadService.uploadFile(bucket, req.file, req);
     res.json(data);
   } catch (err) {
     handleError(res, 'Upload error', err, 500);

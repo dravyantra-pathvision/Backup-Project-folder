@@ -2,9 +2,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import '../core/theme.dart';
 import '../core/config.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:provider/provider.dart';
+import '../models/engine.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -41,24 +45,115 @@ class _SignupScreenState extends State<SignupScreen> {
       
       final user = cred.user;
       if (user != null) {
-        final token = await user.getIdToken();
-        final response = await http.post(
-          Uri.parse('${AppConfig.apiBaseUrl}/api/users/sync'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          body: jsonEncode({'full_name': _name.text.trim(), 'role': 'fleet_owner'}),
-        );
+        // Send email verification
+        await user.sendEmailVerification();
+
+        try {
+          final token = await user.getIdToken();
+          final engine = Provider.of<DataEngine>(context, listen: false);
+          await http.post(
+            Uri.parse('${engine.baseUrl}/api/users/sync'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'full_name': _name.text.trim(), 'role': 'fleet_owner'}),
+          ).timeout(const Duration(seconds: 5));
+        } catch (e) {
+          debugPrint('Backend sync error: $e');
+        }
         
-        if (response.statusCode == 200 && mounted) {
-          context.go('/dashboard');
-        } else {
-          throw Exception('Failed to sync user to backend');
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Verify Email'),
+              content: Text('A verification email has been sent to ${user.email}. Please verify your email before logging in.'),
+              actions: [
+                ElevatedButton(
+                  onPressed: () {
+                    FirebaseAuth.instance.signOut();
+                    context.go('/login');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Go back to login page'),
+                ),
+              ],
+            ),
+          );
         }
       }
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Signup failed')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      if (kIsWeb) {
+        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        final cred = await FirebaseAuth.instance.signInWithPopup(googleProvider);
+        final user = cred.user;
+        if (user != null) {
+          final token = await user.getIdToken();
+          final engine = Provider.of<DataEngine>(context, listen: false);
+          await http.post(
+            Uri.parse('${engine.baseUrl}/api/users/sync'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'full_name': user.displayName ?? 'User', 'role': 'fleet_owner'}),
+          );
+
+          if (mounted) {
+            context.go('/dashboard');
+          }
+        }
+        return;
+      }
+
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        setState(() => _isLoading = false);
+        return; // User canceled
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final cred = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = cred.user;
+      if (user != null) {
+        final token = await user.getIdToken();
+        final engine = Provider.of<DataEngine>(context, listen: false);
+        await http.post(
+          Uri.parse('${engine.baseUrl}/api/users/sync'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'full_name': user.displayName ?? 'User', 'role': 'fleet_owner'}),
+        );
+
+        if (mounted) {
+          context.go('/dashboard');
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Google Sign-In failed')));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
@@ -148,6 +243,37 @@ class _SignupScreenState extends State<SignupScreen> {
                     child: _isLoading 
                         ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white))
                         : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Row(
+                  children: [
+                    Expanded(child: Divider()),
+                    Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text("OR", style: TextStyle(color: Colors.grey))),
+                    Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _isLoading ? null : _handleGoogleSignIn,
+                    icon: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text('G', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                    label: const Text('Continue with Google', style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(height: 16),

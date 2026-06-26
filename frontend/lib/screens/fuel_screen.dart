@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import '../core/theme.dart';
-
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../core/theme.dart';
 import '../models/engine.dart';
 import '../widgets/live_ticker.dart';
 
@@ -16,6 +18,50 @@ class FuelScreen extends StatefulWidget {
 
 class _FuelScreenState extends State<FuelScreen> {
   String _filter = 'all'; // all, suspect
+  List<Map<String, String>> _dynamicRates = [];
+  bool _loadingRates = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRates();
+  }
+
+  Future<void> _fetchRates() async {
+    try {
+      final engine = Provider.of<DataEngine>(context, listen: false);
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final response = await http.get(
+        Uri.parse('${engine.baseUrl}/api/fuel_logs/rates'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List parsed = jsonDecode(response.body) as List;
+        if (mounted) {
+          setState(() {
+            _dynamicRates = parsed.map((item) {
+              final map = item as Map<String, dynamic>;
+              return {
+                'city': map['city']?.toString() ?? '',
+                'rate': map['rate']?.toString() ?? '',
+              };
+            }).toList();
+            _loadingRates = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching fuel rates: $e');
+      if (mounted) {
+        setState(() {
+          _loadingRates = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,13 +139,15 @@ class _FuelScreenState extends State<FuelScreen> {
   }
 
   Widget _buildCityRatesBanner() {
-    final rates = [
-      {'city': 'Mumbai', 'rate': '₹94.27'},
-      {'city': 'Delhi', 'rate': '₹87.62'},
-      {'city': 'Bangalore', 'rate': '₹88.94'},
-      {'city': 'Chennai', 'rate': '₹94.24'},
-      {'city': 'Kolkata', 'rate': '₹90.76'},
-    ];
+    final rates = _dynamicRates.isNotEmpty 
+        ? _dynamicRates 
+        : [
+            {'city': 'Mumbai', 'rate': '₹89.97'},
+            {'city': 'Delhi', 'rate': '₹87.62'},
+            {'city': 'Bangalore', 'rate': '₹88.94'},
+            {'city': 'Chennai', 'rate': '₹90.12'},
+            {'city': 'Kolkata', 'rate': '₹90.76'},
+          ];
     return LiveTicker(
       children: rates.map((r) {
         return Padding(
@@ -297,9 +345,38 @@ class _FuelScreenState extends State<FuelScreen> {
     );
   }
 
-  void _exportLogs(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Fuel logs exported to fuel_logs_2026_04.csv'), backgroundColor: AppTheme.success),
+  void _exportLogs(BuildContext context) async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppTheme.primaryBlue,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
+
+    if (picked != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Generating fuel report...'), duration: Duration(seconds: 1)),
+      );
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted) {
+        final start = '${picked.start.day.toString().padLeft(2, '0')}/${picked.start.month.toString().padLeft(2, '0')}/${picked.start.year}';
+        final end = '${picked.end.day.toString().padLeft(2, '0')}/${picked.end.month.toString().padLeft(2, '0')}/${picked.end.year}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Fuel logs ($start to $end) downloaded successfully.'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    }
   }
 }

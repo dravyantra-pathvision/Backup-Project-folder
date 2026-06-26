@@ -8,8 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:csv/csv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../core/config.dart';
 
 class Organization {
   final String name;
@@ -18,8 +18,77 @@ class Organization {
   final String city;
   final String state;
   final String contact;
+  // New fields
+  final String? address;
+  final String? pincode;
+  final String country;
+  final String? fleetSize;
+  final String? industryType;
+  final String? orgAdmin;
+  final String? subscriptionPlan;
+  final String? accountCreationDate;
 
-  Organization({required this.name, required this.gstin, required this.pan, required this.city, required this.state, required this.contact});
+  Organization({
+    required this.name,
+    required this.gstin,
+    required this.pan,
+    required this.city,
+    required this.state,
+    required this.contact,
+    this.address,
+    this.pincode,
+    this.country = 'India',
+    this.fleetSize,
+    this.industryType,
+    this.orgAdmin,
+    this.subscriptionPlan,
+    this.accountCreationDate,
+  });
+
+  Organization copyWith({
+    String? name,
+    String? gstin,
+    String? pan,
+    String? city,
+    String? state,
+    String? contact,
+    String? address,
+    String? pincode,
+    String? country,
+    String? fleetSize,
+    String? industryType,
+    String? orgAdmin,
+    String? subscriptionPlan,
+    String? accountCreationDate,
+  }) {
+    return Organization(
+      name: name ?? this.name,
+      gstin: gstin ?? this.gstin,
+      pan: pan ?? this.pan,
+      city: city ?? this.city,
+      state: state ?? this.state,
+      contact: contact ?? this.contact,
+      address: address ?? this.address,
+      pincode: pincode ?? this.pincode,
+      country: country ?? this.country,
+      fleetSize: fleetSize ?? this.fleetSize,
+      industryType: industryType ?? this.industryType,
+      orgAdmin: orgAdmin ?? this.orgAdmin,
+      subscriptionPlan: subscriptionPlan ?? this.subscriptionPlan,
+      accountCreationDate: accountCreationDate ?? this.accountCreationDate,
+    );
+  }
+
+  bool get isComplete {
+    return name.trim().isNotEmpty &&
+        name != 'DravYantra Logistics Pvt Ltd' &&
+        gstin.trim().isNotEmpty &&
+        gstin != '27AAAAA0000A1Z5' &&
+        pan.trim().isNotEmpty &&
+        pan != 'AAAAA0000A' &&
+        contact.trim().isNotEmpty &&
+        contact != '+91 20 2740 1234';
+  }
 }
 
 class UserAccount {
@@ -30,6 +99,14 @@ class UserAccount {
   final String timezone;
   final int? speedLimitOverride;
   final double? fuelTheftLimitOverride;
+  // New fields
+  final String? employeeId;
+  final String? department;
+  final String? languagePref;
+  final bool emailNotif;
+  final bool smsNotif;
+  final bool pushNotif;
+  final String? lastLogin;
 
   UserAccount({
     required this.name,
@@ -39,7 +116,22 @@ class UserAccount {
     required this.timezone,
     this.speedLimitOverride,
     this.fuelTheftLimitOverride,
+    this.employeeId,
+    this.department,
+    this.languagePref,
+    this.emailNotif = true,
+    this.smsNotif = false,
+    this.pushNotif = true,
+    this.lastLogin,
   });
+
+  bool get isComplete {
+    return name.trim().isNotEmpty &&
+        name != 'Admin User' &&
+        name != 'User' &&
+        phone.trim().isNotEmpty &&
+        phone != '+91 98765 43210';
+  }
 
   UserAccount copyWith({
     String? name,
@@ -49,6 +141,13 @@ class UserAccount {
     String? timezone,
     int? speedLimitOverride,
     double? fuelTheftLimitOverride,
+    String? employeeId,
+    String? department,
+    String? languagePref,
+    bool? emailNotif,
+    bool? smsNotif,
+    bool? pushNotif,
+    String? lastLogin,
   }) {
     return UserAccount(
       name: name ?? this.name,
@@ -58,6 +157,13 @@ class UserAccount {
       timezone: timezone ?? this.timezone,
       speedLimitOverride: speedLimitOverride ?? this.speedLimitOverride,
       fuelTheftLimitOverride: fuelTheftLimitOverride ?? this.fuelTheftLimitOverride,
+      employeeId: employeeId ?? this.employeeId,
+      department: department ?? this.department,
+      languagePref: languagePref ?? this.languagePref,
+      emailNotif: emailNotif ?? this.emailNotif,
+      smsNotif: smsNotif ?? this.smsNotif,
+      pushNotif: pushNotif ?? this.pushNotif,
+      lastLogin: lastLogin ?? this.lastLogin,
     );
   }
 }
@@ -200,6 +306,7 @@ class Trip {
   final double theftFuelLoss;
   final double theftMoneyLoss;
   final String? updatedAt;
+  final String ewayBillUrl;
 
   Trip({
     required this.id, 
@@ -211,6 +318,7 @@ class Trip {
     required this.client, 
     required this.status, 
     required this.ewayBill, 
+    this.ewayBillUrl = '',
     required this.date, 
     required this.progress,
     this.distance = 0.0,
@@ -244,7 +352,14 @@ class Trip {
   Trip copyWith({
     String? vehicle,
     String? driver,
+    String? from,
+    String? to,
+    String? load,
+    String? client,
     String? status, 
+    String? ewayBill, 
+    String? ewayBillUrl, 
+    String? date, 
     double? progress, 
     double? distance, 
     double? fuelUsed, 
@@ -276,13 +391,14 @@ class Trip {
       id: id,
       vehicle: vehicle ?? this.vehicle,
       driver: driver ?? this.driver,
-      from: from,
-      to: to,
-      load: load,
-      client: client,
+      from: from ?? this.from,
+      to: to ?? this.to,
+      load: load ?? this.load,
+      client: client ?? this.client,
       status: status ?? this.status,
-      ewayBill: ewayBill,
-      date: date,
+      ewayBill: ewayBill ?? this.ewayBill,
+      ewayBillUrl: ewayBillUrl ?? this.ewayBillUrl,
+      date: date ?? this.date,
       progress: progress ?? this.progress,
       distance: distance ?? this.distance,
       fuelUsed: fuelUsed ?? this.fuelUsed,
@@ -322,6 +438,7 @@ class Trip {
     'client': client,
     'status': status,
     'ewayBill': ewayBill,
+    'ewayBillUrl': ewayBillUrl,
     'date': date,
     'progress': progress,
     'distance': distance,
@@ -363,6 +480,7 @@ class Trip {
     client: map['client'] ?? '',
     status: map['status'] ?? '',
     ewayBill: map['ewayBill'] ?? map['eway_bill'] ?? '',
+    ewayBillUrl: map['ewayBillUrl'] ?? map['eway_bill_url'] ?? '',
     date: map['date'] ?? '',
     progress: map['progress']?.toDouble() ?? 0.0,
     distance: map['distance']?.toDouble() ?? 0.0,
@@ -460,6 +578,9 @@ class Vehicle {
   final List<ServiceRecord> serviceHistory;
   final bool isBlacklisted;
   final String? imageUrl;
+  final String? rcUrl;
+  final String? insuranceUrl;
+  final String? pucUrl;
 
   Vehicle({
     required this.plate, required this.model, required this.year, required this.type, required this.status, required this.driver,
@@ -472,6 +593,9 @@ class Vehicle {
     this.serviceHistory = const [],
     this.isBlacklisted = false,
     this.imageUrl,
+    this.rcUrl,
+    this.insuranceUrl,
+    this.pucUrl,
   }) : this.health = health ?? _calculateHealth(year);
 
   static int _calculateHealth(int year) {
@@ -480,17 +604,20 @@ class Vehicle {
     return (105 - 5 * age).clamp(0, 100);
   }
 
-  Vehicle copyWith({String? driver, String? status, int? speed, double? fuel, double? idle, int? fastag, double? lat, double? lng, List<List<double>>? route, bool? isActive, List<ServiceRecord>? serviceHistory, bool? isBlacklisted, String? imageUrl}) {
+  Vehicle copyWith({String? model, String? insurance, String? puc, String? driver, String? status, int? speed, double? fuel, double? idle, int? fastag, double? lat, double? lng, List<List<double>>? route, bool? isActive, List<ServiceRecord>? serviceHistory, bool? isBlacklisted, String? imageUrl, String? rcUrl, String? insuranceUrl, String? pucUrl}) {
     return Vehicle(
-      plate: plate, model: model, year: year, type: type, status: status ?? this.status, driver: driver ?? this.driver,
+      plate: plate, model: model ?? this.model, year: year, type: type, status: status ?? this.status, driver: driver ?? this.driver,
       loc: loc, speed: speed ?? this.speed, fuel: fuel ?? this.fuel, mil: mil,
       idle: idle ?? this.idle, fastag: fastag ?? this.fastag, health: health, odo: odo,
-      nextService: nextService, insurance: insurance, permit: permit, puc: puc, lastFill: lastFill, alerts: alerts,
+      nextService: nextService, insurance: insurance ?? this.insurance, permit: permit, puc: puc ?? this.puc, lastFill: lastFill, alerts: alerts,
       lat: lat ?? this.lat, lng: lng ?? this.lng, route: route ?? this.route,
       isActive: isActive ?? this.isActive,
       serviceHistory: serviceHistory ?? this.serviceHistory,
       isBlacklisted: isBlacklisted ?? this.isBlacklisted,
       imageUrl: imageUrl ?? this.imageUrl,
+      rcUrl: rcUrl ?? this.rcUrl,
+      insuranceUrl: insuranceUrl ?? this.insuranceUrl,
+      pucUrl: pucUrl ?? this.pucUrl,
     );
   }
 
@@ -522,6 +649,9 @@ class Vehicle {
     'service_history': serviceHistory.map((x) => x.toMap()).toList(),
     'is_blacklisted': isBlacklisted,
     'image_url': imageUrl,
+    'rc_url': rcUrl,
+    'insurance_url': insuranceUrl,
+    'puc_url': pucUrl,
   };
 
   factory Vehicle.fromMap(Map<String, dynamic> map) => Vehicle(
@@ -552,6 +682,9 @@ class Vehicle {
     serviceHistory: ((map['serviceHistory'] ?? map['service_history']) as List?)?.map((x) => ServiceRecord.fromMap(x as Map<String, dynamic>)).toList() ?? [],
     isBlacklisted: map['isBlacklisted'] ?? map['is_blacklisted'] ?? false,
     imageUrl: map['imageUrl'] ?? map['image_url'],
+    rcUrl: map['rcUrl'] ?? map['rc_url'],
+    insuranceUrl: map['insuranceUrl'] ?? map['insurance_url'],
+    pucUrl: map['pucUrl'] ?? map['puc_url'],
   );
 }
 
@@ -580,6 +713,8 @@ class Driver {
   final bool isActive;
   final List<Trip> tripHistory;
   final String? imageUrl;
+  final String? aadharUrl;
+  final String? licenseUrl;
 
   Driver({
     required this.id, required this.name, required this.phone, required this.age, required this.exp, required this.lic,
@@ -589,9 +724,11 @@ class Driver {
     this.isActive = true,
     this.tripHistory = const [],
     this.imageUrl,
+    this.aadharUrl,
+    this.licenseUrl,
   });
 
-  Driver copyWith({String? vehicle, String? status, int? score, double? idle, double? mil, bool? isActive, List<Trip>? tripHistory, String? imageUrl}) {
+  Driver copyWith({String? vehicle, String? status, int? score, double? idle, double? mil, bool? isActive, List<Trip>? tripHistory, String? imageUrl, String? aadharUrl, String? licenseUrl}) {
     return Driver(
       id: id, name: name, phone: phone, age: age, exp: exp, lic: lic, licExp: licExp, blood: blood,
       vehicle: vehicle ?? this.vehicle, status: status ?? this.status, score: score ?? this.score, mil: mil ?? this.mil, idle: idle ?? this.idle,
@@ -600,6 +737,8 @@ class Driver {
       isActive: isActive ?? this.isActive,
       tripHistory: tripHistory ?? this.tripHistory,
       imageUrl: imageUrl ?? this.imageUrl,
+      aadharUrl: aadharUrl ?? this.aadharUrl,
+      licenseUrl: licenseUrl ?? this.licenseUrl,
     );
   }
 
@@ -611,6 +750,8 @@ class Driver {
     'rating': rating, 'home': home, 'on_leave': onLeave, 'is_active': isActive,
     'trip_history': tripHistory.map((x) => x.toMap()).toList(),
     'image_url': imageUrl,
+    'aadhar_url': aadharUrl,
+    'license_url': licenseUrl,
   };
 
   factory Driver.fromMap(Map<String, dynamic> map) => Driver(
@@ -638,6 +779,8 @@ class Driver {
     isActive: map['isActive'] ?? map['is_active'] ?? true,
     tripHistory: ((map['tripHistory'] ?? map['trip_history']) as List?)?.map<Trip>((x) => Trip.fromMap(x as Map<String, dynamic>)).toList() ?? <Trip>[],
     imageUrl: map['imageUrl'] ?? map['image_url'],
+    aadharUrl: map['aadharUrl'] ?? map['aadhar_url'],
+    licenseUrl: map['licenseUrl'] ?? map['license_url'],
   );
 }
 
@@ -846,17 +989,17 @@ class DataEngine extends ChangeNotifier {
     try {
       Trip? matching;
       // Prefer trip active for this vehicle
-      final vehicleObj = vehicles.firstWhere((v) => v.plate.trim().toUpperCase() == vehiclePlate.trim().toUpperCase(), orElse: () => null as Vehicle);
+      final vehicleObj = vehicles.where((v) => v.plate.trim().toUpperCase() == vehiclePlate.trim().toUpperCase()).firstOrNull;
       if (vehicleObj != null) {
         matching = _activeTripForVehicle(vehicleObj);
       }
       // If not found, try by driver name
       if (matching == null) {
-        matching = trips.firstWhere((t) => t.driver.trim().toLowerCase() == driverName.trim().toLowerCase() && t.tripCompleted != true, orElse: () => null as Trip);
+        matching = trips.where((t) => t.driver.trim().toLowerCase() == driverName.trim().toLowerCase() && t.tripCompleted != true).firstOrNull;
       }
       // Fallback: first active trip missing an assignment
       if (matching == null) {
-        matching = trips.firstWhere((t) => t.tripCompleted != true && (t.vehicle.trim().isEmpty || t.driver.trim().isEmpty), orElse: () => null as Trip);
+        matching = trips.where((t) => t.tripCompleted != true && (t.vehicle.trim().isEmpty || t.driver.trim().isEmpty)).firstOrNull;
       }
       if (matching != null) {
         final updated = matching.copyWith(vehicle: vehiclePlate, driver: driverName);
@@ -1081,14 +1224,54 @@ class DataEngine extends ChangeNotifier {
     }
   }
 
-  void acknowledgeAlert(String id) {
+  Future<void> acknowledgeAlert(String id) async {
+    // Optimistic update
     alerts = alerts.map((a) => a.id == id ? a.copyWith(status: AlertStatus.acknowledged) : a).toList();
     notifyListeners();
+    // Persist to backend
+    try {
+      final headers = await _getHeaders();
+      await http.put(
+        Uri.parse('$baseUrl/api/alerts/$id/acknowledge'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
+    } catch (e) {
+      debugPrint('acknowledgeAlert backend error: $e');
+    }
   }
 
-  void dismissAllAlerts() {
+  Future<void> dismissAllAlerts() async {
+    // Optimistic update
     alerts = alerts.map((a) => a.copyWith(status: AlertStatus.dismissed)).toList();
     notifyListeners();
+    // Persist to backend
+    try {
+      final headers = await _getHeaders();
+      await http.delete(
+        Uri.parse('$baseUrl/api/alerts'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
+    } catch (e) {
+      debugPrint('dismissAllAlerts backend error: $e');
+    }
+  }
+
+  Future<bool> markAllAlertsAsRead() async {
+    // Optimistic update
+    alerts = alerts.map((a) => a.status == AlertStatus.pending ? a.copyWith(status: AlertStatus.acknowledged) : a).toList();
+    notifyListeners();
+    // Persist to backend
+    try {
+      final headers = await _getHeaders();
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/alerts/acknowledge-all'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('markAllAlertsAsRead backend error: $e');
+      return false;
+    }
   }
 
   Future<bool> clearAllAlerts() async {
@@ -1098,9 +1281,10 @@ class DataEngine extends ChangeNotifier {
       if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
         candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/alerts');
       }
-      candidates.add('http://localhost:3000/api/alerts');
       candidates.add('http://10.0.2.2:3000/api/alerts');
+      candidates.add('http://localhost:3000/api/alerts');
       candidates.add('$baseUrl/api/alerts');
+
 
       http.Response? response;
       Exception? lastErr;
@@ -1180,9 +1364,10 @@ class DataEngine extends ChangeNotifier {
       if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
         candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/alerts');
       }
-      candidates.add('http://localhost:3000/api/alerts');
       candidates.add('http://10.0.2.2:3000/api/alerts');
+      candidates.add('http://localhost:3000/api/alerts');
       candidates.add('$baseUrl/api/alerts');
+
 
       http.Response? response;
       for (final u in candidates) {
@@ -1232,11 +1417,20 @@ class DataEngine extends ChangeNotifier {
     _saveTripToBackend(trip);
   }
 
+  void updateTrip(Trip trip) {
+    trips = trips.map((t) => t.id == trip.id ? trip : t).toList();
+    notifyListeners();
+    _saveTripToBackend(trip);
+  }
+
+
   Future<void> refreshData() async {
     await _loadTrips();
     await _loadVehicles();
     await _loadDrivers();
     await _loadSummary();
+    await _loadProfileAndOrg();
+    await _loadFleetSettings();
   }
 
   void updateTripStatus(String id, String status, {double? progress, double? liveSpeed, bool? power, int? idleDuration}) {
@@ -1248,6 +1442,7 @@ class DataEngine extends ChangeNotifier {
           liveSpeed: liveSpeed,
           power: power,
           idleDuration: idleDuration,
+          tripCompleted: status == 'completed',
         );
         _saveTripToBackend(updated);
         return updated;
@@ -1258,33 +1453,227 @@ class DataEngine extends ChangeNotifier {
   }
 
   Organization org = Organization(
-    name: 'DravYantra Logistics Pvt Ltd',
-    gstin: '27AAAAA0000A1Z5',
-    pan: 'AAAAA0000A',
-    city: 'Pune',
-    state: 'Maharashtra',
-    contact: '+91 20 2740 1234'
+    name: '',
+    gstin: '',
+    pan: '',
+    city: '',
+    state: '',
+    contact: ''
   );
   UserAccount user = UserAccount(
-    name: 'Admin User',
-    email: 'admin@drav_yantra.in',
-    phone: '+91 98765 43210',
+    name: '',
+    email: '',
+    phone: '',
     role: 'Fleet Manager',
-    timezone: 'IST (UTC+5:30)',
+    timezone: '',
   );
   AlertSettings alertSettings = AlertSettings(speedThreshold: 80, idleLimit: 15, fuelDropThreshold: 5.0, fastagThreshold: 500, whatsappEnabled: true, smsEnabled: false, pushEnabled: true, emailEnabled: true, mileageThreshold: 4.0, perTypeToggles: const {'overSpeed': true, 'excessIdle': true, 'fuelDrop': true, 'geoFence': true, 'harshBraking': true, 'eWayBill': true, 'fastag': true, 'gpsLost': true});
 
   bool isLoggedIn = true;
   String? backendBaseUrl; // persisted override for device testing (e.g. http://192.168.1.42:3000)
+  DateTime? lastPromptedAt;
 
   String get baseUrl {
+    // 1) Manually set override (e.g. from ConnectionSettings screen)
     if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
       return backendBaseUrl!.replaceAll(RegExp(r'/$'), '');
     }
-    if (!kIsWeb && Platform.isAndroid) {
-      return 'http://10.0.2.2:3000';
+    // 2) Build-time dart-define (production cloud backend)
+    if (AppConfig.apiBaseUrl.isNotEmpty) {
+      return AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
     }
+    // 3) Local dev fallback
+    // Use localhost so that adb reverse tcp:3000 tcp:3000 works on physical devices
     return 'http://localhost:3000';
+  }
+
+
+  Future<void> _loadProfileAndOrg() async {
+    try {
+      final targetUrl = '$baseUrl/api/users/profile';
+      debugPrint('HTTP GET Request to: $targetUrl');
+      final headers = await _getHeaders();
+      var response = await http.get(Uri.parse(targetUrl), headers: headers);
+      debugPrint('HTTP GET Response: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        var data = jsonDecode(response.body) as Map<String, dynamic>;
+        
+        if (data['user'] == null) {
+          debugPrint('User profile null in Postgres database. Auto-syncing user account...');
+          final fbUser = FirebaseAuth.instance.currentUser;
+          if (fbUser != null) {
+            final token = await fbUser.getIdToken();
+            final syncRes = await http.post(
+              Uri.parse('$baseUrl/api/users/sync'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: jsonEncode({
+                'full_name': fbUser.displayName ?? fbUser.email?.split('@').first ?? 'User',
+                'role': 'fleet_owner'
+              }),
+            ).timeout(const Duration(seconds: 8));
+            debugPrint('Auto-sync status code: ${syncRes.statusCode}');
+            if (syncRes.statusCode == 200) {
+              response = await http.get(Uri.parse(targetUrl), headers: headers);
+              if (response.statusCode == 200) {
+                data = jsonDecode(response.body) as Map<String, dynamic>;
+              }
+            }
+          }
+        }
+
+        if (data['user'] != null) {
+          final uMap = data['user'] as Map<String, dynamic>;
+          user = UserAccount(
+            name: uMap['full_name'] ?? '',
+            email: uMap['email'] ?? '',
+            phone: uMap['phone'] ?? '',
+            role: uMap['role'] ?? 'Fleet Manager',
+            timezone: uMap['timezone'] ?? '',
+            speedLimitOverride: uMap['speed_limit_override'] != null ? (uMap['speed_limit_override'] as num).toInt() : null,
+            fuelTheftLimitOverride: uMap['fuel_theft_limit_override'] != null ? (uMap['fuel_theft_limit_override'] as num).toDouble() : null,
+            employeeId: uMap['employee_id'],
+            department: uMap['department'],
+            languagePref: uMap['language_pref'],
+            emailNotif: uMap['email_notif'] ?? true,
+            smsNotif: uMap['sms_notif'] ?? false,
+            pushNotif: uMap['push_notif'] ?? true,
+            lastLogin: uMap['last_login'],
+          );
+          if (uMap['last_prompted_at'] != null) {
+            lastPromptedAt = DateTime.tryParse(uMap['last_prompted_at']);
+          }
+        }
+        
+        if (data['org'] != null) {
+          final oMap = data['org'] as Map<String, dynamic>;
+          org = Organization(
+            name: oMap['company_name'] ?? '',
+            gstin: oMap['gstin'] ?? '',
+            pan: oMap['pan'] ?? '',
+            city: oMap['city'] ?? '',
+            state: oMap['state'] ?? '',
+            contact: oMap['contact_number'] ?? '',
+            address: oMap['address'],
+            pincode: oMap['pincode'],
+            country: oMap['country'] ?? 'India',
+            fleetSize: oMap['fleet_size'],
+            industryType: oMap['industry_type'],
+            orgAdmin: oMap['org_admin'],
+            subscriptionPlan: oMap['subscription_plan'],
+            accountCreationDate: oMap['account_creation_date'],
+          );
+        } else {
+          org = Organization(
+            name: '',
+            gstin: '',
+            pan: '',
+            city: '',
+            state: '',
+            contact: '',
+          );
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Failed to load profile and org: $e');
+    }
+  }
+
+  Future<bool> saveUserProfile(UserAccount newUser) async {
+    final oldUser = user;
+    user = newUser;
+    notifyListeners();
+
+    try {
+      final targetUrl = '$baseUrl/api/users/profile';
+      debugPrint('HTTP PUT Request to: $targetUrl');
+      final headers = await _getHeaders();
+      final response = await http.put(
+        Uri.parse(targetUrl),
+        headers: headers,
+        body: jsonEncode({
+          'full_name': newUser.name,
+          'phone': newUser.phone,
+          'timezone': newUser.timezone,
+          if (newUser.employeeId != null) 'employee_id': newUser.employeeId,
+          if (newUser.department != null) 'department': newUser.department,
+          if (newUser.languagePref != null) 'language_pref': newUser.languagePref,
+          'email_notif': newUser.emailNotif,
+          'sms_notif': newUser.smsNotif,
+          'push_notif': newUser.pushNotif,
+        }),
+      );
+      debugPrint('HTTP PUT Response: ${response.statusCode} - ${response.body}');
+      if (response.statusCode == 200) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Failed to save user profile: $e');
+    }
+    
+    // Revert state if saving to backend failed
+    user = oldUser;
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> saveOrgProfile(Organization newOrg) async {
+    final oldOrg = org;
+    org = newOrg;
+    notifyListeners();
+
+    try {
+      final targetUrl = '$baseUrl/api/users/organization';
+      debugPrint('HTTP PUT Request to: $targetUrl');
+      final headers = await _getHeaders();
+      final response = await http.put(
+        Uri.parse(targetUrl),
+        headers: headers,
+        body: jsonEncode({
+          'company_name': newOrg.name,
+          'gstin': newOrg.gstin,
+          'pan': newOrg.pan,
+          'contact_number': newOrg.contact,
+          'city': newOrg.city,
+          'state': newOrg.state,
+          if (newOrg.address != null) 'address': newOrg.address,
+          if (newOrg.pincode != null) 'pincode': newOrg.pincode,
+          'country': newOrg.country,
+          if (newOrg.fleetSize != null) 'fleet_size': newOrg.fleetSize,
+          if (newOrg.industryType != null) 'industry_type': newOrg.industryType,
+        }),
+      );
+      debugPrint('HTTP PUT Response: ${response.statusCode} - ${response.body}');
+      if (response.statusCode == 200) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Failed to save organization profile: $e');
+    }
+
+    // Revert state if saving to backend failed
+    org = oldOrg;
+    notifyListeners();
+    return false;
+  }
+
+  Future<void> recordPromptTime() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/users/prompted'),
+        headers: headers,
+      );
+      if (response.statusCode == 200) {
+        lastPromptedAt = DateTime.now();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Failed to record prompt time: $e');
+    }
   }
 
   void updateOrg(Organization newOrg) {
@@ -1302,30 +1691,24 @@ class DataEngine extends ChangeNotifier {
     notifyListeners();
     try {
       final headers = await _getHeaders();
-      final candidates = <String>[];
-      if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
-        candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/fleet-settings');
-      }
-      candidates.add('http://localhost:3000/api/fleet-settings');
-      candidates.add('http://10.0.2.2:3000/api/fleet-settings');
-      candidates.add('$baseUrl/api/fleet-settings');
-
-      for (final u in candidates) {
-        try {
-          final response = await http.put(
-            Uri.parse(u),
-            headers: headers,
-            body: jsonEncode({
-              'speedThreshold': newSettings.speedThreshold,
-              'fuelDropThreshold': newSettings.fuelDropThreshold,
-            }),
-          ).timeout(const Duration(seconds: 4));
-          if (response.statusCode == 200) {
-            break;
-          }
-        } catch (_) {
-          continue;
-        }
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/fleet-settings'),
+        headers: headers,
+        body: jsonEncode({
+          'speedThreshold': newSettings.speedThreshold,
+          'fuelDropThreshold': newSettings.fuelDropThreshold,
+          'idleLimit': newSettings.idleLimit,
+          'fastagThreshold': newSettings.fastagThreshold,
+          'mileageThreshold': newSettings.mileageThreshold,
+          'whatsappEnabled': newSettings.whatsappEnabled,
+          'smsEnabled': newSettings.smsEnabled,
+          'pushEnabled': newSettings.pushEnabled,
+          'emailEnabled': newSettings.emailEnabled,
+          'perTypeToggles': newSettings.perTypeToggles,
+        }),
+      ).timeout(const Duration(seconds: 4));
+      if (response.statusCode != 200) {
+        debugPrint("Error updating fleet settings: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
       debugPrint('Failed to persist fleet settings: $e');
@@ -1361,21 +1744,64 @@ class DataEngine extends ChangeNotifier {
   // After a 429, wait before retrying that trip again.
   final Map<String, int> _tripRetryAfterAt = {};
 
+  bool isConnected = true;
+  Timer? _healthCheckTimer;
+
+  Future<void> checkServerHealth() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/health'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 3));
+      
+      if (response.statusCode == 200) {
+        _updateConnectionStatus(true);
+      } else {
+        _updateConnectionStatus(false);
+      }
+    } catch (_) {
+      _updateConnectionStatus(false);
+    }
+  }
+
+  void _updateConnectionStatus(bool status) {
+    if (isConnected != status) {
+      isConnected = status;
+      notifyListeners();
+      if (isConnected) {
+        // Load settings and profile data from the database now that we are online
+        refreshData();
+        _loadFleetSettings();
+      }
+    }
+  }
+
   DataEngine() {
+    _init();
+  }
+
+  Future<void> _init() async {
+    checkServerHealth();
+    _healthCheckTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      checkServerHealth();
+    });
     // load persisted backend override if set
-    () async {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        backendBaseUrl = prefs.getString('backend_base_url');
-      } catch (_) {}
-    }();
-    _loadVehicles();
-    _loadDrivers();
-    _loadFuelLogs();
-    _loadTrips();
-    _loadSummary();
-    _loadAlerts();
-    _loadFleetSettings();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      backendBaseUrl = prefs.getString('backend_base_url');
+    } catch (_) {}
+
+    await _loadVehicles();
+    await _loadDrivers();
+    await _loadFuelLogs();
+    await _loadTrips();
+    await _loadSummary();
+    await _loadAlerts();
+    await _loadFleetSettings();
+    await _loadProfileAndOrg();
+
     // Poll backend periodically so database changes propagate into the UI quickly.
     // This refreshes trips first, then vehicles, drivers, and summary.
     _summaryPollTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
@@ -1419,12 +1845,7 @@ class DataEngine extends ChangeNotifier {
       // creates a refresh loop against manual DB edits and backend recomputation.
       // Vehicle telemetry still updates the vehicle list and alerts above.
 
-      drivers = drivers.map((d) {
-        int newScore = d.onLeave ? d.score : max(0, min(100, (d.score + (Random().nextDouble() * 2 - 1)).round()));
-        double newIdle = d.status == 'on_duty' ? max(0, double.parse((d.idle + (Random().nextDouble() * 1 - 0.5)).toStringAsFixed(1))) : d.idle;
-        double newMil = d.status == 'on_duty' ? max(2, double.parse((d.mil + (Random().nextDouble() * 0.1 - 0.05)).toStringAsFixed(2))) : d.mil;
-        return d.copyWith(score: newScore, idle: newIdle, mil: newMil);
-      }).toList();
+      // Drivers scores and metrics are authoritative from the DB. No local random simulation.
 
       notifyListeners();
     });
@@ -1454,9 +1875,10 @@ class DataEngine extends ChangeNotifier {
       if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
         candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/fleet-settings');
       }
-      candidates.add('http://localhost:3000/api/fleet-settings');
       candidates.add('http://10.0.2.2:3000/api/fleet-settings');
+      candidates.add('http://localhost:3000/api/fleet-settings');
       candidates.add('$baseUrl/api/fleet-settings');
+
 
       for (final u in candidates) {
         try {
@@ -1493,6 +1915,17 @@ class DataEngine extends ChangeNotifier {
       else await prefs.setString('backend_base_url', url);
     } catch (e) {
       debugPrint('Failed to persist backendBaseUrl: $e');
+    }
+    await checkServerHealth();
+    if (isConnected) {
+      await _loadVehicles();
+      await _loadDrivers();
+      await _loadFuelLogs();
+      await _loadTrips();
+      await _loadSummary();
+      await _loadAlerts();
+      await _loadFleetSettings();
+      await _loadProfileAndOrg();
     }
     notifyListeners();
   }
@@ -1677,7 +2110,18 @@ class DataEngine extends ChangeNotifier {
       final response = await http.get(Uri.parse('$baseUrl/api/trips'), headers: headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        trips = data.map((item) => Trip.fromMap(item as Map<String, dynamic>)).toList();
+        final List<Trip> serverTrips = data.map((item) => Trip.fromMap(item as Map<String, dynamic>)).toList();
+        
+        final List<Trip> merged = List<Trip>.from(serverTrips);
+        final Set<String> serverIds = serverTrips.map((t) => t.id).toSet();
+        for (final localTrip in trips) {
+          final isPending = _pendingSaves.any((t) => t.id == localTrip.id) || _tripSaveInFlight.contains(localTrip.id);
+          if (isPending && !serverIds.contains(localTrip.id)) {
+            merged.insert(0, localTrip);
+          }
+        }
+        
+        trips = merged;
         _syncVehicleStatuses();
         _syncDriverStatuses();
         debugPrint("Loaded trips from DB: ${trips.length}");
@@ -1703,7 +2147,7 @@ class DataEngine extends ChangeNotifier {
 
     final prevMap = prev.toMap();
     final payload = <String, dynamic>{'id': t.id};
-    const fieldsToCheck = ['vehicle','driver','from','to','load','client','status','ewayBill','date','progress','distance','fuelUsed','score','delayMinutes','waypoints','tollCount','liveSpeed','power','idleDuration','tripCompleted','defaultMileage','currentMileage','fuelSaved','fuelWasted','moneySaved','moneyWasted','liveIdleTime','liveIdleSpeed','liveFuelCount'];
+    const fieldsToCheck = ['vehicle','driver','from','to','load','client','status','ewayBill','ewayBillUrl','date','progress','distance','fuelUsed','score','delayMinutes','waypoints','tollCount','liveSpeed','power','idleDuration','tripCompleted','defaultMileage','currentMileage','fuelSaved','fuelWasted','moneySaved','moneyWasted','liveIdleTime','liveIdleSpeed','liveFuelCount'];
 
     for (final k in fieldsToCheck) {
       final p = prevMap[k];
@@ -1751,7 +2195,7 @@ class DataEngine extends ChangeNotifier {
         debugPrint('trip payload: ${jsonEncode(t.toMap())}');
       } catch (e) {}
       final headers = await _getHeaders();
-      final payload = _buildTripPatch(t);
+      final payload = t.toMap();
 
       final response = await http.post(
         Uri.parse('$baseUrl/api/trips'),
@@ -1813,7 +2257,7 @@ class DataEngine extends ChangeNotifier {
       final response = await http.post(
         Uri.parse('$baseUrl/api/trips'),
         headers: headers,
-        body: jsonEncode(_buildTripPatch(t)),
+        body: jsonEncode(t.toMap()),
       );
       if (response.statusCode == 200 || response.statusCode == 201) {
         _pendingSaves.removeWhere((x) => x.id == t.id);
@@ -1890,7 +2334,7 @@ class DataEngine extends ChangeNotifier {
       if (activeTrip.id.isNotEmpty) {
         final vehiclePlate = activeTrip.vehicle.isNotEmpty ? activeTrip.vehicle : d.vehicle;
         final status = activeTrip.status.isNotEmpty ? activeTrip.status : 'on_duty';
-        return d.copyWith(vehicle: vehiclePlate, isActive: d.isActive, tripHistory: d.tripHistory)..copyWith();
+        return d.copyWith(vehicle: vehiclePlate, status: status, isActive: d.isActive, tripHistory: d.tripHistory);
       }
 
       // If no active trip, preserve assignment but set status to idle if vehicle assigned

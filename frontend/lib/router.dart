@@ -5,6 +5,8 @@ import 'screens/role_selection_screen.dart';
 
 import 'screens/signup_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/forgot_password_screen.dart';
+import 'screens/verify_otp_screen.dart';
 
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -23,7 +25,7 @@ import 'widgets/scaffold_with_nav.dart';
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final shellNavigatorKey = GlobalKey<NavigatorState>();
 
-CustomTransitionPage buildPageWithDefaultTransition<T>({
+CustomTransitionPage<T> buildPageWithDefaultTransition<T>({
   required BuildContext context,
   required GoRouterState state,
   required Widget child,
@@ -31,8 +33,29 @@ CustomTransitionPage buildPageWithDefaultTransition<T>({
   return CustomTransitionPage<T>(
     key: state.pageKey,
     child: child,
-    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-        FadeTransition(opacity: animation, child: child),
+    transitionDuration: const Duration(milliseconds: 320),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final fadeAnim = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+      final slideAnim = Tween<Offset>(
+        begin: const Offset(0.04, 0.0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+
+      // Secondary: slide outward when route is pushed away
+      final secondarySlide = Tween<Offset>(
+        begin: Offset.zero,
+        end: const Offset(-0.04, 0.0),
+      ).animate(CurvedAnimation(parent: secondaryAnimation, curve: Curves.easeIn));
+
+      return SlideTransition(
+        position: secondarySlide,
+        child: SlideTransition(
+          position: slideAnim,
+          child: FadeTransition(opacity: fadeAnim, child: child),
+        ),
+      );
+    },
   );
 }
 
@@ -48,7 +71,7 @@ NoTransitionPage buildNoTransitionPage<T>({
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
-  initialLocation: '/role-selection',
+  initialLocation: '/splash',
   routes: [
     GoRoute(
       path: '/role-selection',
@@ -71,6 +94,25 @@ final GoRouter appRouter = GoRouter(
       path: '/signup',
       pageBuilder: (context, state) => buildPageWithDefaultTransition(
         context: context, state: state, child: const SignupScreen()),
+    ),
+    GoRoute(
+      path: '/forgot-password',
+      pageBuilder: (context, state) => buildPageWithDefaultTransition(
+        context: context, state: state, child: const ForgotPasswordScreen()),
+    ),
+    GoRoute(
+      path: '/verify-otp',
+      pageBuilder: (context, state) {
+        final verificationId = state.uri.queryParameters['verificationId'] ?? '';
+        final phoneNumber = state.uri.queryParameters['phoneNumber'] ?? '';
+        final role = state.uri.queryParameters['role'] ?? 'fleet_owner';
+        return buildPageWithDefaultTransition(
+          context: context, state: state, child: VerifyOtpScreen(
+            verificationId: verificationId,
+            phoneNumber: phoneNumber,
+            role: role,
+          ));
+      },
     ),
 
     GoRoute(

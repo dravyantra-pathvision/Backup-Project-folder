@@ -10,3 +10,7 @@ backend/serviceAccountKey.json
 
 # Ignore IDE files
 .idea/
+
+# Sensitive Firebase Info
+frontend/android/app/google-services.json
+frontend/lib/firebase_options.dart

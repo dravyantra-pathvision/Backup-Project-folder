@@ -85,7 +85,18 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.success, foregroundColor: Colors.white),
-                    onPressed: () => engine.dismissAllAlerts(), // Simulating acknowledge all
+                    onPressed: () async {
+                      final ok = await engine.markAllAlertsAsRead();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok ? 'All alerts marked as read' : 'Failed to mark alerts as read'),
+                            backgroundColor: ok ? AppTheme.success : AppTheme.danger,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
                     icon: const Icon(LucideIcons.checkCheck, size: 14), 
                     label: const Text('Mark All Read')
                   ),

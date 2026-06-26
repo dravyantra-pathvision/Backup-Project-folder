@@ -1,108 +1,121 @@
-const alertsStore = require('../services/alertsStore');
+// controllers/alertsController.js
+// Fully PostgreSQL-backed: create, read, acknowledge, dismiss, clear alerts
+const { pool } = require('../config/dbconfig');
 const { handleError } = require('../utils/responseHandler');
-const fs = require('fs');
-const path = require('path');
-const ALERTS_FILE = path.join(__dirname, '..', 'data', 'alerts.json');
 
 const getAlerts = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
   try {
-    const list = await alertsStore.getAllAlerts();
-    res.json(list);
+    const result = await pool.query(
+      `SELECT * FROM alerts WHERE uid = $1 AND status != 'dismissed'
+       ORDER BY detected_at DESC LIMIT 200`,
+      [uid]
+    );
+    const mapped = result.rows.map(mapAlertRow);
+    res.json(mapped);
   } catch (err) {
     handleError(res, 'Error fetching alerts', err);
   }
 };
 
-const clearAlerts = async (req, res) => {
-  try {
-    let ok = false;
-    try {
-      if (alertsStore && typeof alertsStore.clearAllAlerts === 'function') {
-        ok = await alertsStore.clearAllAlerts();
-      } else {
-        // fallback: directly clear the alerts file
-        try {
-          if (!fs.existsSync(path.dirname(ALERTS_FILE))) fs.mkdirSync(path.dirname(ALERTS_FILE), { recursive: true });
-          fs.writeFileSync(ALERTS_FILE, JSON.stringify([], null, 2), 'utf8');
-          ok = true;
-        } catch (e) {
-          console.error('fallback clear file failed:', e && e.message);
-          ok = false;
-        }
-      }
-    } catch (e) {
-      console.error('clearAllAlerts threw:', e && e.message);
-      ok = false;
-    }
-    // Always attempt to return a 200 response; on failure return empty list so UI can continue.
-    let list = [];
-    try {
-      list = await alertsStore.getAllAlerts();
-    } catch (e) {
-      console.error('getAllAlerts after clear failed:', e && e.message);
-      list = [];
-    }
-    res.json({ ok: ok, alerts: list });
-  } catch (err) {
-    console.error('Unexpected error in clearAlerts:', err && err.message);
-    res.status(200).json({ ok: false, alerts: [] });
-  }
-};
-
 const createAlert = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
   try {
-    const incoming = req.body || {};
-    console.log('createAlert invoked:', req.method, req.originalUrl, 'bodyKeys=', Object.keys(incoming));
-    // Normalize some common fields for backward compatibility
-    const normalized = Object.assign({}, incoming);
-    if (!normalized.time) normalized.time = new Date().toISOString();
+    const {
+      trip, vehiclePlate, vehicle, driver = '',
+      type = 'unknown', message = '', severity = 'warning',
+      category = 'fuel', detectedAt,
+    } = req.body || {};
 
-    // Persist via alertsStore
-    let saved;
-    try {
-      saved = await alertsStore.addAlert(normalized);
-    } catch (e) {
-      console.error('alertsController.createAlert: alertsStore.addAlert threw:', e && (e.stack || e.message || e));
-    }
-    if (saved) {
-      console.log('createAlert: persisted via alertsStore');
-      return res.status(201).json(saved);
-    }
+    const plate = vehiclePlate || vehicle || trip || '';
+    const detectedAtVal = detectedAt ? new Date(detectedAt) : new Date();
 
-    // Fallback: attempt to persist directly to the alerts file so clients can
-    // create alerts even when alertsStore helper fails (e.g., permissions).
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const ALERTS_FILE = path.join(__dirname, '..', 'data', 'alerts.json');
-      if (!fs.existsSync(path.dirname(ALERTS_FILE))) fs.mkdirSync(path.dirname(ALERTS_FILE), { recursive: true });
-      let list = [];
-      try {
-        const txt = fs.readFileSync(ALERTS_FILE, 'utf8');
-        list = JSON.parse(txt || '[]');
-      } catch (e) { list = []; }
-      const toSave = Object.assign({ status: 'pending' }, normalized);
-      list.unshift(toSave);
-      list = list.slice(0, 500);
-      // atomic write
-      const tmp = ALERTS_FILE + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(list, null, 2), 'utf8');
-      fs.renameSync(tmp, ALERTS_FILE);
-      console.log('createAlert: fallback persisted to file');
-      return res.status(201).json(toSave);
-    } catch (e) {
-      console.error('alertsController.createAlert: fallback write failed', e && (e.stack || e.message || e));
-      // Temporarily include error details to help debugging caller-side
-      try {
-        return res.status(500).json({ error: 'Failed to save alert', details: String(e && (e.stack || e.message || e)) });
-      } catch (er) {
-        console.error('alertsController.createAlert: failed to send error response', er && er.message);
-        return handleError(res, 'Failed to create alert', e);
-      }
-    }
+    const result = await pool.query(
+      `INSERT INTO alerts (uid, vehicle_plate, driver, type, message, severity, category, status, detected_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8)
+       RETURNING *`,
+      [uid, plate, driver, type, message, severity, category, detectedAtVal]
+    );
+    res.status(201).json(mapAlertRow(result.rows[0]));
   } catch (err) {
     handleError(res, 'Error creating alert', err);
   }
 };
 
-module.exports = { getAlerts, clearAlerts, createAlert };
+const acknowledgeAlert = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `UPDATE alerts SET status='acknowledged', acknowledged_at=NOW()
+       WHERE id=$1 AND uid=$2 RETURNING *`,
+      [id, uid]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Alert not found' });
+    res.json(mapAlertRow(result.rows[0]));
+  } catch (err) {
+    handleError(res, 'Error acknowledging alert', err);
+  }
+};
+
+const dismissAlert = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `UPDATE alerts SET status='dismissed', dismissed_at=NOW()
+       WHERE id=$1 AND uid=$2 RETURNING *`,
+      [id, uid]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Alert not found' });
+    res.json(mapAlertRow(result.rows[0]));
+  } catch (err) {
+    handleError(res, 'Error dismissing alert', err);
+  }
+};
+
+const acknowledgeAllAlerts = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
+  try {
+    await pool.query(
+      `UPDATE alerts SET status='acknowledged', acknowledged_at=NOW()
+       WHERE uid=$1 AND status = 'pending'`,
+      [uid]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    handleError(res, 'Error acknowledging all alerts', err);
+  }
+};
+
+const clearAlerts = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
+  try {
+    await pool.query(
+      `UPDATE alerts SET status='dismissed', dismissed_at=NOW()
+       WHERE uid=$1 AND status != 'dismissed'`,
+      [uid]
+    );
+    res.json({ ok: true, alerts: [] });
+  } catch (err) {
+    handleError(res, 'Error clearing alerts', err);
+  }
+};
+
+function mapAlertRow(row) {
+  return {
+    id: String(row.id),
+    vehiclePlate: row.vehicle_plate || '',
+    driver: row.driver || '',
+    type: row.type || 'unknown',
+    message: row.message || '',
+    severity: row.severity || 'warning',
+    category: row.category || 'fuel',
+    status: row.status || 'pending',
+    detectedAt: row.detected_at,
+    acknowledgedAt: row.acknowledged_at,
+    dismissedAt: row.dismissed_at,
+  };
+}
+
+module.exports = { getAlerts, createAlert, acknowledgeAlert, dismissAlert, clearAlerts, acknowledgeAllAlerts };

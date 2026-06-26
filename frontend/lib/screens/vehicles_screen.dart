@@ -135,7 +135,18 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
             const SizedBox(height: 16),
             _buildFilters(),
             const SizedBox(height: 16),
-            _buildVehicleTable(context, engine, filteredVehicles),
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeOutCubic,
+              builder: (context, val, child) {
+                return Transform.translate(
+                  offset: Offset(0, 20 * (1.0 - val)),
+                  child: Opacity(opacity: val, child: child),
+                );
+              },
+              child: _buildVehicleTable(context, engine, filteredVehicles),
+            ),
           ],
         ),
       ),
@@ -326,10 +337,50 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                           IconButton(
                             icon: const Icon(LucideIcons.trash2, size: 18, color: AppTheme.danger), 
                             onPressed: () async {
-                              await engine.removeVehicle(v.plate);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('${v.plate} removed')),
-                              );
+                              final hasStartedTrip = engine.trips.any((t) =>
+                                  t.vehicle.trim().toUpperCase() == v.plate.trim().toUpperCase() &&
+                                  (t.status == 'running' || t.status == 'idle'));
+                              if (hasStartedTrip) {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Vehicle Assigned to Active Trip'),
+                                    content: const Text('This vehicle is assigned for a trip, first stop the trip and then come back and delete.'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const Text('Close'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Delete Vehicle'),
+                                    content: Text('Are you sure you want to delete vehicle ${v.plate}?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm == true) {
+                                  await engine.removeVehicle(v.plate);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('${v.plate} removed')),
+                                    );
+                                  }
+                                }
+                              }
                             }
                           ),
                         ],
@@ -395,6 +446,12 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
     if (widget.vehicle != null) {
       _insExpDate = DateTime.tryParse(widget.vehicle!.insurance);
       _pucExpDate = DateTime.tryParse(widget.vehicle!.puc);
+      _rcFileUrl = widget.vehicle!.rcUrl;
+      _insFileUrl = widget.vehicle!.insuranceUrl;
+      _pucFileUrl = widget.vehicle!.pucUrl;
+      _rcUploaded = _rcFileUrl != null && _rcFileUrl!.isNotEmpty;
+      _insUploaded = _insFileUrl != null && _insFileUrl!.isNotEmpty;
+      _pucUploaded = _pucFileUrl != null && _pucFileUrl!.isNotEmpty;
     }
   }
 
@@ -459,8 +516,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   Future<void> _pickAndUpload(String docType) async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        type: FileType.any,
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
@@ -551,9 +607,20 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
           lat: 19.0760, 
           lng: 72.8777,
           imageUrl: _rcFileUrl ?? _insFileUrl ?? _pucFileUrl,
+          rcUrl: _rcFileUrl,
+          insuranceUrl: _insFileUrl,
+          pucUrl: _pucFileUrl,
         ));
       } else {
-        await widget.engine.updateVehicle(widget.vehicle!.copyWith()); 
+        await widget.engine.updateVehicle(widget.vehicle!.copyWith(
+          model: _modelCtrl.text,
+          insurance: _insExpDate != null ? _insExpDate!.toIso8601String().split('T').first : widget.vehicle!.insurance,
+          puc: _pucExpDate != null ? _pucExpDate!.toIso8601String().split('T').first : widget.vehicle!.puc,
+          imageUrl: _rcFileUrl ?? _insFileUrl ?? _pucFileUrl ?? widget.vehicle!.imageUrl,
+          rcUrl: _rcFileUrl ?? widget.vehicle!.rcUrl,
+          insuranceUrl: _insFileUrl ?? widget.vehicle!.insuranceUrl,
+          pucUrl: _pucFileUrl ?? widget.vehicle!.pucUrl,
+        )); 
       }
       await widget.engine.refreshData();
       Navigator.pop(context);

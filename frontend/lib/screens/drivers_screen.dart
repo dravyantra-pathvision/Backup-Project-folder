@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../models/engine.dart';
 import '../core/theme.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../widgets/animated_widgets.dart';
 
 class DriversScreen extends StatefulWidget {
   const DriversScreen({super.key});
@@ -69,7 +70,18 @@ class _DriversScreenState extends State<DriversScreen> {
             const SizedBox(height: 16),
             _buildKpis(drivers),
             const SizedBox(height: 16),
-            _buildLeaderboardTable(context, sortedDrivers),
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeOutCubic,
+              builder: (context, val, child) {
+                return Transform.translate(
+                  offset: Offset(0, 20 * (1.0 - val)),
+                  child: Opacity(opacity: val, child: child),
+                );
+              },
+              child: _buildLeaderboardTable(context, sortedDrivers),
+            ),
             const SizedBox(height: 16),
             _buildCoachingSuggestions(atRisk),
           ],
@@ -191,10 +203,52 @@ class _DriversScreenState extends State<DriversScreen> {
                           IconButton(
                             icon: const Icon(LucideIcons.trash2, size: 18, color: AppTheme.danger), 
                             onPressed: () async {
-                              await engine.removeDriver(d.id);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('${d.name} removed')),
-                              );
+                              final hasStartedTrip = engine.trips.any((t) {
+                                final driverKey = (t.driver ?? '').toString().trim().toLowerCase();
+                                return (driverKey == d.name.trim().toLowerCase() || driverKey == d.id.trim().toLowerCase()) &&
+                                       (t.status == 'running' || t.status == 'idle');
+                              });
+                              if (hasStartedTrip) {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Driver Assigned to Active Trip'),
+                                    content: const Text('This driver is assigned for a trip, first stop the trip and then come back and delete.'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const Text('Close'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Delete Driver'),
+                                    content: Text('Are you sure you want to delete driver ${d.name}?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm == true) {
+                                  await engine.removeDriver(d.id);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('${d.name} removed')),
+                                    );
+                                  }
+                                }
+                              }
                             }
                           ),
                         ],
@@ -236,14 +290,18 @@ class _DriversScreenState extends State<DriversScreen> {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.circle, size: 8, color: AppTheme.danger),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4.0),
+                      child: Icon(Icons.circle, size: 8, color: AppTheme.danger),
+                    ),
                     const SizedBox(width: 8),
-                    Text(d.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Flexible(child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.bold))),
                     const SizedBox(width: 8),
                     const Text('—'),
                     const SizedBox(width: 8),
-                    Text(suggestion, style: const TextStyle(color: AppTheme.textSecondary)),
+                    Expanded(child: Text(suggestion, style: const TextStyle(color: AppTheme.textSecondary))),
                   ],
                 ),
               );
@@ -293,6 +351,10 @@ class _DriverFormDialogState extends State<_DriverFormDialog> {
     _nameCtrl = TextEditingController(text: widget.driver?.name ?? '');
     _phoneCtrl = TextEditingController(text: widget.driver?.phone ?? '');
     _ageCtrl = TextEditingController(text: widget.driver?.age.toString() ?? '');
+    _aadharFileUrl = widget.driver?.aadharUrl;
+    _aadharUploaded = _aadharFileUrl != null && _aadharFileUrl!.isNotEmpty;
+    _licenseFileUrl = widget.driver?.licenseUrl;
+    _licenseUploaded = _licenseFileUrl != null && _licenseFileUrl!.isNotEmpty;
   }
 
   @override
@@ -329,8 +391,7 @@ class _DriverFormDialogState extends State<_DriverFormDialog> {
   Future<void> _pickAndUpload(String docType) async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        type: FileType.any,
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
@@ -350,7 +411,7 @@ class _DriverFormDialogState extends State<_DriverFormDialog> {
       // Upload via backend (uses service_role key, bypasses RLS)
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('http://localhost:3000/api/upload?bucket=driver_docs'),
+        Uri.parse('${widget.engine.baseUrl}/api/upload?bucket=driver_docs'),
       );
       request.files.add(http.MultipartFile.fromBytes(
         'file',
@@ -392,9 +453,15 @@ class _DriverFormDialogState extends State<_DriverFormDialog> {
 
   void _save() {
     if (_formKey.currentState!.validate()) {
+      if (!_aadharUploaded || !_licenseUploaded) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please upload both Aadhar Card and Driving License.'), backgroundColor: AppTheme.danger),
+        );
+        return;
+      }
       if (widget.driver == null) {
         widget.engine.addDriver(Driver(
-          id: 'DRV-${1000 + widget.engine.drivers.length + 1}', 
+          id: 'DRV-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}', 
           name: _nameCtrl.text, 
           phone: _phoneCtrl.text,
           age: int.tryParse(_ageCtrl.text) ?? 30, 
@@ -407,9 +474,15 @@ class _DriverFormDialogState extends State<_DriverFormDialog> {
           score: 0, mil: 0, idle: 0, trips: 0, harsh: 0, overSpeed: 0, deviation: 0, fuelEff: 100,
           rating: 5.0, home: 'N/A', onLeave: false,
           imageUrl: _aadharFileUrl ?? _licenseFileUrl,
+          aadharUrl: _aadharFileUrl ?? '',
+          licenseUrl: _licenseFileUrl ?? '',
         ));
       } else {
-        widget.engine.updateDriver(widget.driver!.copyWith());
+        widget.engine.updateDriver(widget.driver!.copyWith(
+          imageUrl: _aadharFileUrl ?? _licenseFileUrl,
+          aadharUrl: _aadharFileUrl ?? widget.driver!.aadharUrl,
+          licenseUrl: _licenseFileUrl ?? widget.driver!.licenseUrl,
+        ));
       }
       Navigator.pop(context);
     }
@@ -637,6 +710,50 @@ class _DriverDetailDrawer extends StatelessWidget {
                     subtitle: Text('${t.date} • ${t.distance} km', style: const TextStyle(fontSize: 11)),
                     trailing: Text('${t.score}', style: TextStyle(color: t.score >= 80 ? AppTheme.success : AppTheme.warning, fontWeight: FontWeight.bold)),
                   )),
+                if (driver.aadharUrl != null && driver.aadharUrl!.isNotEmpty) ...[
+                  const Divider(height: 32),
+                  const Text('AADHAR DOCUMENT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      driver.aadharUrl!,
+                      height: 200,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 100,
+                          color: Colors.grey.shade100,
+                          alignment: Alignment.center,
+                          child: const Text('Cannot load Aadhar image', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                if (driver.licenseUrl != null && driver.licenseUrl!.isNotEmpty) ...[
+                  const Divider(height: 32),
+                  const Text('DRIVING LICENSE DOCUMENT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      driver.licenseUrl!,
+                      height: 200,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 100,
+                          color: Colors.grey.shade100,
+                          alignment: Alignment.center,
+                          child: const Text('Cannot load License image', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                        );
+                      },
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 OutlinedButton(
                   onPressed: onDeactivate, 

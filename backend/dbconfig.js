@@ -68,7 +68,6 @@ const initDB = async () => {
         service_history JSONB DEFAULT '[]',
         is_active BOOLEAN DEFAULT TRUE,
         is_blacklisted BOOLEAN DEFAULT FALSE,
-        image_url VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -100,9 +99,13 @@ const initDB = async () => {
         is_active BOOLEAN DEFAULT TRUE,
         trip_history JSONB DEFAULT '[]',
         image_url VARCHAR(255),
+        aadhar_url TEXT,
+        license_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await client.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS aadhar_url TEXT;`);
+    await client.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_url TEXT;`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS fuel_logs (
@@ -134,6 +137,7 @@ const initDB = async () => {
         client VARCHAR(255),
         status VARCHAR(50) DEFAULT 'not started',
         eway_bill VARCHAR(100),
+        eway_bill_url VARCHAR(255),
         date VARCHAR(50),
         progress DOUBLE PRECISION DEFAULT 0.0,
         distance DOUBLE PRECISION DEFAULT 0.0,

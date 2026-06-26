@@ -24,13 +24,13 @@ const getAvailableVehicles = async (uid) => {
 
 const createVehicle = async (uid, data) => {
   const result = await pool.query(
-    `INSERT INTO vehicles (plate, uid, model, year, type, status, driver, loc, speed, fuel, mil, idle, fastag, health, odo, next_service, insurance, permit, puc, last_fill, lat, lng, route, alerts, service_history, image_url) 
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) 
+    `INSERT INTO vehicles (plate, uid, model, year, type, status, driver, loc, speed, fuel, mil, idle, fastag, health, odo, next_service, insurance, permit, puc, last_fill, lat, lng, route, alerts, service_history, rc_url, insurance_url, puc_url) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) 
      ON CONFLICT (plate) DO UPDATE SET
        uid = $2, model = $3, year = $4, type = $5, status = $6, driver = $7, loc = $8, speed = $9,
        fuel = $10, mil = $11, idle = $12, fastag = $13, health = $14, odo = $15, next_service = $16,
        insurance = $17, permit = $18, puc = $19, last_fill = $20, lat = $21, lng = $22,
-       route = $23, alerts = $24, service_history = $25, image_url = $26
+       route = $23, alerts = $24, service_history = $25, rc_url = $26, insurance_url = $27, puc_url = $28
      RETURNING *`,
     [
       data.plate,
@@ -58,7 +58,9 @@ const createVehicle = async (uid, data) => {
       JSON.stringify(data.route || []),
       JSON.stringify(data.alerts || []),
       JSON.stringify(data.service_history || []),
-      data.image_url
+      data.rc_url,
+      data.insurance_url,
+      data.puc_url
     ]
   );
   return result.rows[0];
@@ -66,8 +68,8 @@ const createVehicle = async (uid, data) => {
 
 const updateVehicle = async (uid, plate, data) => {
   const result = await pool.query(
-    `UPDATE vehicles SET model=$1, year=$2, type=$3, status=$4, driver=$5, loc=$6, speed=$7, fuel=$8, mil=$9, idle=$10, fastag=$11, health=$12, odo=$13, next_service=$14, insurance=$15, permit=$16, puc=$17, last_fill=$18, lat=$19, lng=$20, route=$21, alerts=$22, service_history=$23, image_url=$24
-     WHERE plate=$25 AND uid=$26
+    `UPDATE vehicles SET model=$1, year=$2, type=$3, status=$4, driver=$5, loc=$6, speed=$7, fuel=$8, mil=$9, idle=$10, fastag=$11, health=$12, odo=$13, next_service=$14, insurance=$15, permit=$16, puc=$17, last_fill=$18, lat=$19, lng=$20, route=$21, alerts=$22, service_history=$23, rc_url=$24, insurance_url=$25, puc_url=$26
+     WHERE plate=$27 AND uid=$28
      RETURNING *`,
     [
       data.model,
@@ -93,7 +95,9 @@ const updateVehicle = async (uid, plate, data) => {
       JSON.stringify(data.route),
       JSON.stringify(data.alerts),
       JSON.stringify(data.service_history),
-      data.image_url,
+      data.rc_url,
+      data.insurance_url,
+      data.puc_url,
       plate,
       uid
     ]
@@ -107,7 +111,7 @@ const deleteVehicle = async (uid, plate) => {
   try {
     await client.query('BEGIN');
     // Unassign vehicle from trips, but skip manual overrides
-    await client.query('UPDATE trips SET vehicle = $1 WHERE vehicle = $2 AND uid = $3 AND (manual_override IS NOT TRUE)', ['', plate, uid]);
+    await client.query('UPDATE trips SET vehicle = $1 WHERE vehicle = $2 AND uid = $3', ['', plate, uid]);
     // Unassign vehicle from drivers
     await client.query('UPDATE drivers SET vehicle = $1 WHERE vehicle = $2 AND uid = $3', ['', plate, uid]);
     // Delete vehicle row

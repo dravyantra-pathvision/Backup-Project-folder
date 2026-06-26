@@ -1,23 +1,44 @@
 // services/uploadService.js
-// Extracted upload helper utilizing Supabase Admin SDK L432-459 of index.js
+const fs = require('fs');
+const path = require('path');
 const supabaseAdmin = require('../config/supabase');
 
-const uploadFile = async (bucket, file) => {
+const uploadFile = async (bucket, file, req) => {
   const fileName = `${Date.now()}_${file.originalname.replace(/\s+/g, '_')}`;
 
-  const { error } = await supabaseAdmin.storage
-    .from(bucket)
-    .upload(fileName, file.buffer, {
-      contentType: file.mimetype,
-      upsert: true,
-    });
+  if (supabaseAdmin) {
+    try {
+      const { error } = await supabaseAdmin.storage
+        .from(bucket)
+        .upload(fileName, file.buffer, {
+          contentType: file.mimetype,
+          upsert: true,
+        });
 
-  if (error) {
-    throw error;
+      if (!error) {
+        const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(fileName);
+        return { url: data.publicUrl };
+      }
+      console.warn('Supabase upload failed, falling back to local storage:', error);
+    } catch (e) {
+      console.warn('Supabase upload threw error, falling back to local storage:', e);
+    }
   }
 
-  const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(fileName);
-  return { url: data.publicUrl };
+  // Local storage fallback
+  const uploadDir = path.join(__dirname, '../public/uploads', bucket);
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const filePath = path.join(uploadDir, fileName);
+  fs.writeFileSync(filePath, file.buffer);
+
+  // Construct absolute URL
+  const protocol = req.protocol;
+  const host = req.get('host');
+  const publicUrl = `${protocol}://${host}/uploads/${bucket}/${fileName}`;
+  return { url: publicUrl };
 };
 
 module.exports = {

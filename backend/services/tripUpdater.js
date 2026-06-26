@@ -84,7 +84,7 @@ const computeForRow = (row) => {
 
 const updateActiveTrips = async () => {
   try {
-    const res = await pool.query("SELECT id, uid, distance, fuel_used, default_mileage, idle_duration, status, live_idle_time, live_fuel_count, fuel_price, live_speed FROM trips WHERE trip_completed IS NOT TRUE AND (manual_override IS NOT TRUE)");
+    const res = await pool.query("SELECT id, uid, distance, fuel_used, default_mileage, idle_duration, status, live_idle_time, live_fuel_count, fuel_price, live_speed FROM trips WHERE trip_completed IS NOT TRUE");
     const rows = res.rows || [];
     // DB triggers now own the derived trip fields. This worker is retained
     // only as a compatibility hook and intentionally does not rewrite rows,

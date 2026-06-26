@@ -7,21 +7,26 @@ import 'core/theme.dart';
 import 'models/engine.dart';
 import 'router.dart';
 
+import 'core/config.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
   } catch (e) {
-    debugPrint("Firebase initialization failed: $e");
+    debugPrint('Firebase initialization failed: $e');
   }
 
+  // Initialize Supabase
   await Supabase.initialize(
-    url: 'https://zjmvmgneevskjqpiggau.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqbXZtZ25lZXZza2pxcGlnZ2F1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNjQxOTksImV4cCI6MjA5NDc0MDE5OX0.1iN2jDclKYwTGdCHhlV9sE3kwQQUx3yXfhjvAT3jQlI',
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
   );
-  
+
   runApp(
     MultiProvider(
       providers: [

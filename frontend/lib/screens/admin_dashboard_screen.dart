@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../core/theme.dart';
+import '../core/session_manager.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
@@ -25,8 +26,9 @@ class AdminDashboardScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(LucideIcons.logOut, color: AppTheme.danger),
             onPressed: () async {
+              await SessionManager.clearSession();
               await FirebaseAuth.instance.signOut();
-              if (context.mounted) context.go('/login');
+              if (context.mounted) context.go('/role-selection');
             },
             tooltip: 'Logout',
           ),

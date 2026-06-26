@@ -33,6 +33,7 @@ const mapTripRow = (row) => {
     client: get('client','client'),
     status: get('status','status'),
     ewayBill: str('eway_bill','ewayBill'),
+    ewayBillUrl: str('eway_bill_url','ewayBillUrl') || '',
     date: str('date','date'),
     progress: num('progress','progress'),
     distance: num('distance','distance'),

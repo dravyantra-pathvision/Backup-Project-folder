@@ -1,11 +1,22 @@
 import 'dart:math';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:csv/csv.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/engine.dart';
 import '../core/theme.dart';
 import '../models/city.dart';
 import 'city_search_screen.dart';
+import '../widgets/animated_widgets.dart';
 
 class TripsScreen extends StatefulWidget {
   const TripsScreen({super.key});
@@ -17,6 +28,7 @@ class TripsScreen extends StatefulWidget {
 class _TripsScreenState extends State<TripsScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   Trip? _selectedTrip;
+  String _selectedFilter = 'All';
 
   Color _tripStatusColor(String status) {
     final normalized = status.trim().toLowerCase().replaceAll('_', ' ');
@@ -32,6 +44,19 @@ class _TripsScreenState extends State<TripsScreen> {
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
     final trips = engine.trips;
+    final filteredTrips = trips.where((t) {
+      if (_selectedFilter == 'All') return true;
+      if (_selectedFilter == 'Assigned') {
+        return t.status == 'pending' || t.status == 'not started';
+      }
+      if (_selectedFilter == 'Started') {
+        return t.status == 'running' || t.status == 'idle';
+      }
+      if (_selectedFilter == 'Completed') {
+        return t.status == 'completed' || t.tripCompleted == true;
+      }
+      return true;
+    }).toList();
     // If another screen requested a trip to be highlighted, handle it once
     final String? highlighted = engine.highlightedTripId;
     if (highlighted != null && highlighted.isNotEmpty) {
@@ -104,18 +129,30 @@ class _TripsScreenState extends State<TripsScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildKpis(trips.length, running, completed, pending),
+            _buildAllKpis(trips, trips.length, running, completed, pending),
             const SizedBox(height: 16),
-            _buildTripTotals(trips),
+            _buildFilters(),
             const SizedBox(height: 16),
-            _buildTripsGrid(context, trips),
+            _buildTripsGrid(context, filteredTrips),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildKpis(int total, int running, int completed, int pending) {
+  Widget _buildAllKpis(List<Trip> trips, int total, int running, int completed, int pending) {
+    final engine = Provider.of<DataEngine>(context);
+    final double totalFuelUsedLiters = trips.fold<double>(0.0, (sum, t) {
+      if (t.status == 'pending' || t.status == 'not started') return sum;
+      final dist = t.distance * t.progress;
+      final mileage = t.defaultMileage > 0 ? t.defaultMileage : 4.0;
+      return sum + (dist / mileage);
+    });
+
+    final int totalFuelWastedLiters = engine.lossLiters; // int liters from summary
+    final double totalMoneyWasted = engine.loss; // double rupees from summary
+
+
     return Wrap(
       spacing: 12,
       runSpacing: 12,
@@ -123,23 +160,7 @@ class _TripsScreenState extends State<TripsScreen> {
         _kpiCard('Total Trips', '$total', 'all time', AppTheme.ecoGreen),
         _kpiCard('Live Tracking', '$running', 'on road', Colors.blue),
         _kpiCard('Successful', '$completed', 'delivered', Colors.deepPurple),
-        _kpiCard('Scheduled', '$pending', 'pending dispatch', AppTheme.warning),
-      ],
-    );
-  }
-
-  Widget _buildTripTotals(List<Trip> trips) {
-    final engine = Provider.of<DataEngine>(context);
-    // Use DB summary fields (source-of-truth) rather than folding in-memory trips
-    final totalFuelUsedLiters = engine.spendLiters; // int liters from summary
-    final totalFuelWastedLiters = engine.lossLiters; // int liters from summary
-    final totalMoneyWasted = engine.loss; // double rupees from summary
-
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _kpiCard('Fuel Used', '${totalFuelUsedLiters.toString()} L', 'all trips', AppTheme.primaryBlue),
+        _kpiCard('Fuel Used', '${totalFuelUsedLiters.toStringAsFixed(1)} L', 'all trips', AppTheme.primaryBlue),
         _kpiCard('Fuel Wasted', '${totalFuelWastedLiters.toString()} L', 'all trips', AppTheme.danger),
         _kpiCard('Money Wasted', '₹${totalMoneyWasted.toStringAsFixed(2)}', 'all trips', AppTheme.danger),
       ],
@@ -184,90 +205,161 @@ class _TripsScreenState extends State<TripsScreen> {
         final t = trips[index];
         final color = _tripStatusColor(t.status);
 
-        return InkWell(
-          onTap: () async {
-            final engine = context.read<DataEngine>();
-            await engine.refreshData();
-            if (!mounted) return;
-            final refreshedTrip = engine.trips.firstWhere(
-              (trip) => trip.id == t.id,
-              orElse: () => t,
-            );
-            setState(() => _selectedTrip = refreshedTrip);
-            _scaffoldKey.currentState?.openEndDrawer();
-          },
-          child: Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: color.withOpacity(0.1))),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                            child: Text(t.id, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
-                          ),
-                          if (t.delayMinutes > 0) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: AppTheme.danger, borderRadius: BorderRadius.circular(4)),
-                              child: Text('DELAY ${t.delayMinutes}M', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ],
-                      ),
-                      _Badge(label: t.status.toUpperCase(), color: color),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text('${t.from != null && t.from.isNotEmpty ? t.from : '—'} → ${t.to != null && t.to.isNotEmpty ? t.to : '—'}', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(LucideIcons.user, size: 12, color: AppTheme.textSecondary),
-                      const SizedBox(width: 4),
-                      Text(t.driver, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                      const SizedBox(width: 12),
-                      const Icon(LucideIcons.truck, size: 12, color: AppTheme.textSecondary),
-                      const SizedBox(width: 4),
-                      Text(t.vehicle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Spacer(),
-                  if (t.status == 'running') ...[
+        return FadeSlideIn(
+          index: index,
+          child: AnimatedTapButton(
+            onTap: () {
+              setState(() => _selectedTrip = t);
+              _scaffoldKey.currentState?.openEndDrawer();
+              final engine = context.read<DataEngine>();
+              engine.refreshData().then((_) {
+                if (mounted && _selectedTrip?.id == t.id) {
+                  final refreshedTrip = engine.trips.firstWhere(
+                    (trip) => trip.id == t.id,
+                    orElse: () => t,
+                  );
+                  setState(() => _selectedTrip = refreshedTrip);
+                }
+              });
+            },
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: color.withOpacity(0.15)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Trip Progress', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                        Text('${(t.progress * 100).toInt()}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue)),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                              child: Text(t.id, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+                            ),
+                            if (t.delayMinutes > 0) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: AppTheme.danger, borderRadius: BorderRadius.circular(4)),
+                                child: Text('DELAY ${t.delayMinutes}M', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            if (t.status != 'completed' && t.tripCompleted != true) ...[
+                              AnimatedTapButton(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => _TripFormDialog(engine: context.read<DataEngine>(), trip: t),
+                                  );
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: Icon(LucideIcons.edit2, size: 14, color: AppTheme.textSecondary),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            _Badge(label: t.status.toUpperCase(), color: color),
+                          ],
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    LinearProgressIndicator(value: t.progress, backgroundColor: Colors.blue.withOpacity(0.1), color: Colors.blue, minHeight: 6),
-                  ] else ...[
+                    const SizedBox(height: 12),
+                    Text('${t.from != null && t.from.isNotEmpty ? t.from : '—'} → ${t.to != null && t.to.isNotEmpty ? t.to : '—'}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Icon(LucideIcons.box, size: 12, color: AppTheme.textSecondary),
-                        const SizedBox(width: 6),
-                        Text(t.load, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                        const Icon(LucideIcons.user, size: 12, color: AppTheme.textSecondary),
+                        const SizedBox(width: 4),
+                        Flexible(child: Text(t.driver, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary), overflow: TextOverflow.ellipsis)),
+                        const SizedBox(width: 12),
+                        const Icon(LucideIcons.truck, size: 12, color: AppTheme.textSecondary),
+                        const SizedBox(width: 4),
+                        Flexible(child: Text(t.vehicle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary), overflow: TextOverflow.ellipsis)),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    const Spacer(),
+                    if (t.status == 'running') ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Trip Progress', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                          Text('${(t.progress * 100).toInt()}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(value: t.progress, backgroundColor: Colors.blue.withOpacity(0.1), color: Colors.blue, minHeight: 6),
+                      ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          const Icon(LucideIcons.box, size: 12, color: AppTheme.textSecondary),
+                          const SizedBox(width: 6),
+                          Text(t.load, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildFilters() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedFilter,
+          icon: const Icon(LucideIcons.filter, size: 16, color: AppTheme.textSecondary),
+          elevation: 16,
+          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+          onChanged: (String? newValue) {
+            if (newValue != null) {
+              setState(() {
+                _selectedFilter = newValue;
+              });
+            }
+          },
+          items: <String>['All', 'Assigned', 'Started', 'Completed']
+              .map<DropdownMenuItem<String>>((String value) {
+            return DropdownMenuItem<String>(
+              value: value,
+              child: Text('Filter Trips: $value'),
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
@@ -281,7 +373,8 @@ class _TripsScreenState extends State<TripsScreen> {
 
 class _TripFormDialog extends StatefulWidget {
   final DataEngine engine;
-  const _TripFormDialog({required this.engine});
+  final Trip? trip;
+  const _TripFormDialog({required this.engine, this.trip});
 
   @override
   State<_TripFormDialog> createState() => _TripFormDialogState();
@@ -295,6 +388,8 @@ class _TripFormDialogState extends State<_TripFormDialog> {
   final _toCtrl = TextEditingController();
   final _ewayCtrl = TextEditingController();
   bool _ewayUploaded = false;
+  bool _ewayUploading = false;
+  String? _ewayFileUrl;
   City? _fromCity;
   City? _toCity;
   double? _calculatedDistance;
@@ -331,6 +426,16 @@ class _TripFormDialogState extends State<_TripFormDialog> {
   @override
   void initState() {
     super.initState();
+    if (widget.trip != null) {
+      _selectedVehicle = widget.trip!.vehicle;
+      _selectedDriver = widget.trip!.driver;
+      _fromCtrl.text = widget.trip!.from;
+      _toCtrl.text = widget.trip!.to;
+      _ewayCtrl.text = widget.trip!.ewayBill;
+      _ewayUploaded = widget.trip!.ewayBill.isNotEmpty;
+      _ewayFileUrl = widget.trip!.ewayBillUrl;
+      _calculatedDistance = widget.trip!.distance;
+    }
     // Fetch available lists (do not overwrite master lists) so we can mark unavailable items
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final availDrivers = await widget.engine.fetchAvailableDrivers();
@@ -345,15 +450,120 @@ class _TripFormDialogState extends State<_TripFormDialog> {
   Set<String> _availableDriverNames = {};
   Set<String> _availableVehiclePlates = {};
 
+  Widget _buildUploadRow(String label, bool isUploaded, bool isUploading, VoidCallback onUpload) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showInline = constraints.maxWidth > 350;
+          final button = ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isUploaded ? AppTheme.success.withOpacity(0.1) : null,
+              foregroundColor: isUploaded ? AppTheme.success : null,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            icon: isUploading
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(isUploaded ? LucideIcons.checkCircle : LucideIcons.upload, size: 16),
+            label: Text(
+              isUploading ? 'Uploading...' : isUploaded ? 'Uploaded' : 'Upload File',
+              style: const TextStyle(fontSize: 12),
+            ),
+            onPressed: isUploading ? null : onUpload,
+          );
+
+          if (showInline) {
+            return Row(
+              children: [
+                Expanded(child: Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
+                const SizedBox(width: 8),
+                button,
+              ],
+            );
+          } else {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                const SizedBox(height: 6),
+                button,
+              ],
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _pickAndUpload(String docType) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+
+      final fileName = 'eway_${_ewayCtrl.text.trim().isNotEmpty ? _ewayCtrl.text.trim() : DateTime.now().millisecondsSinceEpoch.toString()}.${file.extension}';
+
+      setState(() {
+        if (docType == 'eway') _ewayUploading = true;
+      });
+
+      // Upload via backend
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${widget.engine.baseUrl}/api/upload?bucket=trip_docs'),
+      );
+      request.files.add(http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: fileName,
+      ));
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode != 200) {
+        throw Exception('Server error: ${response.body}');
+      }
+
+      final Map<String, dynamic> responseData = json.decode(response.body);
+      final String url = responseData['url'] ?? '';
+
+      setState(() {
+        if (docType == 'eway') { _ewayFileUrl = url; _ewayUploaded = true; _ewayUploading = false; }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('e-Way Bill uploaded successfully!'), backgroundColor: AppTheme.success),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        if (docType == 'eway') _ewayUploading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppTheme.danger),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // Build vehicle items: exclude vehicles already assigned to active trips
     final allVehicles = widget.engine.vehicles.toList();
     final assignedVehiclePlates = widget.engine.trips.where((t) => t.tripCompleted != true && t.status != 'completed' && t.vehicle.isNotEmpty).map((t) => t.vehicle.trim().toUpperCase()).toSet();
     final displayedVehicles = allVehicles.where((v) {
       final plate = v.plate.trim().toUpperCase();
-      // prefer server-provided available set when present
+      if (widget.trip != null && widget.trip!.vehicle == v.plate) return true;
       if (_availableVehiclePlates.isNotEmpty && !_availableVehiclePlates.contains(plate)) return false;
-      // always exclude currently assigned vehicles
       if (assignedVehiclePlates.contains(plate)) return false;
       return true;
     }).toList();
@@ -363,15 +573,16 @@ class _TripFormDialogState extends State<_TripFormDialog> {
     final assignedDriverNames = widget.engine.trips.where((t) => t.tripCompleted != true && t.status != 'completed' && t.driver.isNotEmpty).map((t) => t.driver.trim().toLowerCase()).toSet();
     final displayedDrivers = allDrivers.where((d) {
       final name = d.name.trim().toLowerCase();
+      if (widget.trip != null && widget.trip!.driver == d.name) return true;
       if (_availableDriverNames.isNotEmpty && !_availableDriverNames.contains(name)) return false;
       if (assignedDriverNames.contains(name)) return false;
       return true;
     }).toList();
 
     return AlertDialog(
-      title: const Text('Schedule New Trip'),
+      title: Text(widget.trip == null ? 'Schedule New Trip' : 'Edit Trip Details'),
       content: SizedBox(
-        width: 500,
+        width: min(500, MediaQuery.of(context).size.width * 0.9),
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -385,7 +596,7 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                   items: displayedVehicles.map((v) {
                     return DropdownMenuItem<String>(
                       value: v.plate,
-                      child: Text('${v.plate} (${v.model ?? ''})', overflow: TextOverflow.ellipsis),
+                      child: Text('${v.plate} (${v.model})', overflow: TextOverflow.ellipsis),
                     );
                   }).toList(),
                   onChanged: (val) => setState(() => _selectedVehicle = val),
@@ -531,8 +742,14 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                       children: [
                         Icon(Icons.route, size: 20, color: AppTheme.ecoGreen),
                         const SizedBox(width: 12),
-                        const Text('Calculated Distance', style: TextStyle(color: AppTheme.textSecondary)),
-                        const Spacer(),
+                        const Expanded(
+                          child: Text(
+                            'Calculated Distance', 
+                            style: TextStyle(color: AppTheme.textSecondary),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Text(
                           '$_calculatedDistance km', 
                           style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.ecoGreen, fontSize: 16),
@@ -542,35 +759,20 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _ewayCtrl,
-                        decoration: const InputDecoration(labelText: 'e-Way Bill Number'),
-                        keyboardType: TextInputType.number,
-                        maxLength: 12,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return null;
-                          if (v.length != 12) return 'Must be exactly 12 digits';
-                          if (!RegExp(r'^\d+$').hasMatch(v)) return 'Must be numeric';
-                          return null;
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _ewayUploaded ? AppTheme.success.withOpacity(0.1) : null,
-                        foregroundColor: _ewayUploaded ? AppTheme.success : null,
-                        elevation: 0,
-                      ),
-                      icon: Icon(_ewayUploaded ? LucideIcons.checkCircle : LucideIcons.upload, size: 16),
-                      label: Text(_ewayUploaded ? 'Uploaded' : 'Upload'),
-                      onPressed: () => setState(() => _ewayUploaded = true),
-                    ),
-                  ],
+                TextFormField(
+                  controller: _ewayCtrl,
+                  decoration: const InputDecoration(labelText: 'e-Way Bill Number'),
+                  keyboardType: TextInputType.number,
+                  maxLength: 12,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return null;
+                    if (v.length != 12) return 'Must be exactly 12 digits';
+                    if (!RegExp(r'^\d+$').hasMatch(v)) return 'Must be numeric';
+                    return null;
+                  },
                 ),
+                const SizedBox(height: 12),
+                _buildUploadRow('e-Way Bill Document', _ewayUploaded, _ewayUploading, () => _pickAndUpload('eway')),
               ],
             ),
           ),
@@ -581,32 +783,45 @@ class _TripFormDialogState extends State<_TripFormDialog> {
         ElevatedButton(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
-              widget.engine.addTrip(Trip(
-                id: 'TRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
-                vehicle: _selectedVehicle ?? '',
-                driver: _selectedDriver ?? '',
-                from: _fromCtrl.text,
-                to: _toCtrl.text,
-                load: 'General Cargo',
-                client: 'New Client',
-                status: 'not started', // Keep status default as not started!
-                ewayBill: _ewayCtrl.text,
-                date: DateTime.now().toString().split(' ')[0],
-                progress: 0.0,
-                distance: _calculatedDistance ?? 0.0,
-                waypoints: [],
-                tollCount: 0,
-                liveSpeed: 0.0,
-                power: false,
-                idleDuration: 0,
-                tripCompleted: false,
-              ));
-              widget.engine.assignVehicle(_selectedDriver!, _selectedVehicle!);
+              if (widget.trip == null) {
+                widget.engine.addTrip(Trip(
+                  id: 'TRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
+                  vehicle: _selectedVehicle ?? '',
+                  driver: _selectedDriver ?? '',
+                  from: _fromCtrl.text,
+                  to: _toCtrl.text,
+                  load: 'General Cargo',
+                  client: 'New Client',
+                  status: 'not started', // Keep status default as not started!
+                  ewayBill: _ewayCtrl.text,
+                  ewayBillUrl: _ewayFileUrl ?? '',
+                  date: DateTime.now().toString().split(' ')[0],
+                  progress: 0.0,
+                  distance: _calculatedDistance ?? 0.0,
+                  waypoints: [],
+                  tollCount: 0,
+                  liveSpeed: 0.0,
+                  power: false,
+                  idleDuration: 0,
+                  tripCompleted: false,
+                ));
+                widget.engine.assignVehicle(_selectedDriver!, _selectedVehicle!);
+              } else {
+                widget.engine.updateTrip(widget.trip!.copyWith(
+                  vehicle: _selectedVehicle,
+                  driver: _selectedDriver,
+                  from: _fromCtrl.text,
+                  to: _toCtrl.text,
+                  ewayBill: _ewayCtrl.text,
+                  ewayBillUrl: _ewayFileUrl ?? widget.trip!.ewayBillUrl,
+                  distance: _calculatedDistance,
+                ));
+              }
               Navigator.pop(context);
             }
           },
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.ecoGreen, foregroundColor: Colors.white),
-          child: const Text('Dispatch'),
+          child: Text(widget.trip == null ? 'Dispatch' : 'Save'),
         ),
       ],
     );
@@ -623,6 +838,38 @@ class _TripDetailDrawer extends StatelessWidget {
     required this.onClose, 
     required this.onStatusUpdate,
   });
+
+  String _generateCsv(String idleFuelLitersText, double idleMoney, double speedingFuelLoss, double speedingMoneyLoss, double theftFuel, double theftMoney) {
+    List<List<dynamic>> rows = [
+      ['Trip Report'],
+      ['ID', trip.id],
+      ['Status', trip.status],
+      ['From', trip.from],
+      ['To', trip.to],
+      ['Vehicle', trip.vehicle],
+      ['Driver', trip.driver],
+      ['Client', trip.client],
+      ['Load', trip.load],
+      ['e-Way Bill', trip.ewayBill],
+      ['Date', trip.date],
+      ['Distance (km)', trip.distance],
+      ['Fuel Used (L)', ((trip.distance * trip.progress) / (trip.defaultMileage > 0 ? trip.defaultMileage : 4.0)).toStringAsFixed(1)],
+      ['Default Mileage (km/l)', trip.defaultMileage.toStringAsFixed(1)],
+      ['Current Mileage (km/l)', trip.currentMileage.toStringAsFixed(1)],
+      ['Fuel Saved (L)', trip.fuelSaved.toStringAsFixed(1)],
+      ['Money Saved (INR)', trip.moneySaved.toStringAsFixed(2)],
+      ['Money Wasted (INR)', trip.moneyWasted.toStringAsFixed(2)],
+      ['Fuel Wasted (L)', trip.fuelWasted.toStringAsFixed(1)],
+      ['Tolls Passed', trip.tollCount],
+      ['Idle Fuel Wasted', idleFuelLitersText],
+      ['Idle Money Wasted (INR)', idleMoney.toStringAsFixed(2)],
+      ['Speeding Fuel Loss (L)', speedingFuelLoss.toStringAsFixed(2)],
+      ['Speeding Money Loss (INR)', speedingMoneyLoss.toStringAsFixed(2)],
+      ['Theft Fuel Loss (L)', theftFuel.toStringAsFixed(2)],
+      ['Theft Money Loss (INR)', theftMoney.toStringAsFixed(2)],
+    ];
+    return const ListToCsvConverter().convert(rows);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -694,7 +941,48 @@ class _TripDetailDrawer extends StatelessWidget {
                             }
                           },
                         ),
-                        IconButton(onPressed: onClose, icon: const Icon(Icons.close, color: Colors.white)),
+                        if (normalized == 'completed') ...[
+                          IconButton(
+                            icon: const Icon(LucideIcons.download, color: Colors.white),
+                            onPressed: () async {
+                              final csv = _generateCsv(idleFuelLitersText, idleMoney, speedingFuelLoss, speedingMoneyLoss, theftFuel, theftMoney);
+                              try {
+                                String? path = await FileSaver.instance.saveAs(
+                                  name: 'trip_${trip.id}',
+                                  ext: 'csv',
+                                  bytes: Uint8List.fromList(utf8.encode(csv)),
+                                  mimeType: MimeType.csv,
+                                );
+
+                                if (context.mounted && path != null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to: $path')));
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+                                }
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(LucideIcons.share2, color: Colors.white),
+                            onPressed: () async {
+                              final csv = _generateCsv(idleFuelLitersText, idleMoney, speedingFuelLoss, speedingMoneyLoss, theftFuel, theftMoney);
+                              try {
+                                final dir = await getTemporaryDirectory();
+                                final path = '${dir.path}/trip_${trip.id}.csv';
+                                final file = File(path);
+                                await file.writeAsString(csv);
+                                await Share.shareXFiles([XFile(path)], text: 'Trip Report ${trip.id}');
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generating report: $e')));
+                                }
+                              }
+                            },
+                          ),
+                        ] else
+                          IconButton(onPressed: onClose, icon: const Icon(Icons.close, color: Colors.white)),
                       ],
                     ),
                   ],
@@ -727,7 +1015,14 @@ class _TripDetailDrawer extends StatelessWidget {
                 _InfoRow(label: 'Load Description', value: trip.load, icon: LucideIcons.box),
                 _InfoRow(label: 'e-Way Bill', value: trip.ewayBill, icon: LucideIcons.fileText),
                 _InfoRow(label: 'Date', value: trip.date, icon: LucideIcons.calendar),
-                _InfoRow(label: 'Distance', value: '${trip.distance} km', icon: Icons.route),
+                _InfoRow(label: 'Total Distance', value: '${trip.distance} km', icon: Icons.route),
+                _InfoRow(label: 'Distance Covered', value: '${(trip.distance * trip.progress).toStringAsFixed(1)} km', icon: LucideIcons.navigation),
+                _InfoRow(label: 'Remaining Distance', value: '${(trip.distance * (1.0 - trip.progress)).toStringAsFixed(1)} km', icon: LucideIcons.map),
+                _InfoRow(
+                  label: 'Fuel Used', 
+                  value: '${(trip.status == 'pending' || trip.status == 'not started') ? '0.0' : ((trip.distance * trip.progress) / (trip.defaultMileage > 0 ? trip.defaultMileage : 4.0)).toStringAsFixed(1)} L', 
+                  icon: LucideIcons.fuel,
+                ),
                 _InfoRow(label: 'Default Mileage', value: '${trip.defaultMileage.toStringAsFixed(1)} km/l', icon: LucideIcons.gauge),
                 _InfoRow(label: 'Current Mileage', value: '${trip.currentMileage.toStringAsFixed(1)} km/l', icon: LucideIcons.activity),
                 _InfoRow(label: 'Fuel Saved', value: '${trip.fuelSaved.toStringAsFixed(1)} L', icon: LucideIcons.feather),
@@ -753,8 +1048,30 @@ class _TripDetailDrawer extends StatelessWidget {
                 const Divider(height: 32),
                 const Text('ASSETS ASSIGNED', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
                 const SizedBox(height: 16),
-                _InfoRow(label: 'Vehicle', value: trip.vehicle, icon: LucideIcons.truck),
-                _InfoRow(label: 'Driver', value: trip.driver, icon: LucideIcons.user),
+                 _InfoRow(label: 'Vehicle', value: trip.vehicle, icon: LucideIcons.truck),
+                 _InfoRow(label: 'Driver', value: trip.driver, icon: LucideIcons.user),
+                 if (trip.ewayBillUrl.isNotEmpty) ...[
+                   const Divider(height: 32),
+                   const Text('E-WAY BILL DOCUMENT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
+                   const SizedBox(height: 16),
+                   ClipRRect(
+                     borderRadius: BorderRadius.circular(8),
+                     child: Image.network(
+                       trip.ewayBillUrl,
+                       height: 200,
+                       width: double.infinity,
+                       fit: BoxFit.cover,
+                       errorBuilder: (context, error, stackTrace) {
+                         return Container(
+                           height: 100,
+                           color: Colors.grey.shade100,
+                           alignment: Alignment.center,
+                           child: const Text('Cannot load e-Way Bill image', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                         );
+                       },
+                     ),
+                   ),
+                 ],
                 const Divider(height: 48),
                 if (trip.status == 'pending' || trip.status == 'not started')
                   ElevatedButton(
@@ -762,12 +1079,19 @@ class _TripDetailDrawer extends StatelessWidget {
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
                     child: const Text('Start Trip'),
                   ),
-                if (trip.status == 'running' || trip.status == 'idle')
+                if (trip.status == 'running' || trip.status == 'idle') ...[
+                  ElevatedButton(
+                    onPressed: () => onStatusUpdate('completed'),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                    child: const Text('Stop Trip'),
+                  ),
+                  const SizedBox(height: 12),
                   ElevatedButton(
                     onPressed: () => onStatusUpdate('completed'),
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.ecoGreen, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
                     child: const Text('Mark as Completed'),
                   ),
+                ],
               ],
             ),
           ),

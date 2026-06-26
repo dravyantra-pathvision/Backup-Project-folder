@@ -59,9 +59,8 @@ const getEffectiveIdleSeconds = (status, data, current) => {
 };
 
 const getAllTrips = async (uid) => {
-  // Only return trips that are not marked completed so UI "trips" section hides finished trips
   const result = await pool.query(
-    'SELECT * FROM trips WHERE uid = $1 AND (trip_completed IS NOT TRUE)',
+    'SELECT * FROM trips WHERE uid = $1 ORDER BY date DESC, id DESC',
     [uid]
   );
   return result.rows;
@@ -81,7 +80,7 @@ const createTrip = async (uid, data) => {
   if (data.vehicle) {
     // When creating/upserting, allow the same trip id to keep its vehicle.
     const vParams = [uid, data.vehicle];
-    let vQuery = 'SELECT 1 FROM trips WHERE uid = $1 AND vehicle = $2 AND (trip_completed IS NOT TRUE)';
+    let vQuery = "SELECT 1 FROM trips WHERE uid = $1 AND vehicle = $2 AND (trip_completed IS NOT TRUE AND status != 'completed')";
     if (data.id) {
       vQuery += ' AND id <> $3';
       vParams.push(data.id);
@@ -97,7 +96,7 @@ const createTrip = async (uid, data) => {
   if (data.driver) {
     // Allow same trip id to retain its driver during upsert
     const dParams = [uid, data.driver];
-    let dQuery = 'SELECT 1 FROM trips WHERE uid = $1 AND driver = $2 AND (trip_completed IS NOT TRUE)';
+    let dQuery = "SELECT 1 FROM trips WHERE uid = $1 AND driver = $2 AND (trip_completed IS NOT TRUE AND status != 'completed')";
     if (data.id) {
       dQuery += ' AND id <> $3';
       dParams.push(data.id);
@@ -129,6 +128,9 @@ const createTrip = async (uid, data) => {
   let fuelWasted = 0.0;
   let moneySaved = 0.0;
   let moneyWasted = 0.0;
+  let idleSeconds = getEffectiveIdleSeconds(data.status || 'not started', data, null);
+  let idleRupees = (idleSeconds / 3600) * IDLE_COST_PER_HOUR_RUPEES;
+  
   if (distance > 0 && effectiveFuelUsed > 0) {
     // Preserve client-supplied currentMileage when provided, otherwise derive from liveSpeed or distance/fuelUsed.
     defaultMileage = parseNumber(data.defaultMileage ?? data.default_mileage ?? 4.0, 4.0);
@@ -136,8 +138,6 @@ const createTrip = async (uid, data) => {
     const fuelSavedVal = Math.max(0, expectedFuel - effectiveFuelUsed);
     const fuelWastedMileage = Math.max(0, effectiveFuelUsed - expectedFuel);
     const fuelPrice = Number(data.fuelPrice || data.fuel_price || DEFAULT_FUEL_PRICE_RUPEES);
-    const idleSeconds = getEffectiveIdleSeconds(data.status || 'not started', data, null);
-    const idleRupees = (idleSeconds / 3600) * IDLE_COST_PER_HOUR_RUPEES;
     const idleLiters = fuelPrice > 0 ? idleRupees / fuelPrice : 0.0;
     fuelWasted = fuelWastedMileage + idleLiters;
     fuelSaved = fuelSavedVal;
@@ -154,8 +154,8 @@ const createTrip = async (uid, data) => {
   // and use COALESCE(EXCLUDED.col, trips.col) in the DO UPDATE clause so the
   // existing DB value is preserved unless the client explicitly provides one.
   const result = await pool.query(
-    `INSERT INTO trips (id, uid, vehicle, driver, from_location, to_location, load, client, status, trip_completed, eway_bill, date, progress, distance, fuel_used, score, delay_minutes, waypoints, toll_count, live_speed, power, idle_duration, default_mileage, current_mileage, fuel_saved, fuel_wasted, money_saved, money_wasted, live_idle_speed, live_idle_time, live_fuel_count, total_idle_time, idle_money_wasted, speeding_fuel_wasted) 
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34) 
+    `INSERT INTO trips (id, uid, vehicle, driver, from_location, to_location, load, client, status, trip_completed, eway_bill, eway_bill_url, date, progress, distance, fuel_used, score, delay_minutes, waypoints, toll_count, live_speed, power, idle_duration, default_mileage, current_mileage, fuel_saved, fuel_wasted, money_saved, money_wasted, live_idle_speed, live_idle_time, live_fuel_count, total_idle_time, idle_money_wasted, speeding_fuel_wasted) 
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $35, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34) 
      ON CONFLICT (id) DO UPDATE SET
        vehicle = EXCLUDED.vehicle,
        driver = EXCLUDED.driver,
@@ -165,6 +165,7 @@ const createTrip = async (uid, data) => {
        client = EXCLUDED.client,
        status = EXCLUDED.status,
        eway_bill = EXCLUDED.eway_bill,
+       eway_bill_url = COALESCE(NULLIF(EXCLUDED.eway_bill_url, ''), trips.eway_bill_url),
        date = EXCLUDED.date,
        progress = EXCLUDED.progress,
        distance = EXCLUDED.distance,
@@ -225,9 +226,11 @@ const createTrip = async (uid, data) => {
       (typeof data.liveFuelCount === 'number') ? data.liveFuelCount : (typeof data.live_fuel_count === 'number' ? data.live_fuel_count : null),
       Math.round(idleSeconds / 60),
       Number(idleRupees.toFixed(2)),
-      speedingFuelWasted
+      speedingFuelWasted,
+      (data.ewayBillUrl && data.ewayBillUrl.length > 0) ? data.ewayBillUrl : ((data.eway_bill_url && data.eway_bill_url.length > 0) ? data.eway_bill_url : null)
     ]
   );
+  console.log('createTrip: ewayBillUrl input=', data.ewayBillUrl, 'eway_bill_url input=', data.eway_bill_url, 'stored=', result.rows[0]?.eway_bill_url);
   const created = result.rows[0];
 
   // Keep vehicle's speed in sync when a trip is created with live_speed
@@ -326,6 +329,7 @@ const updateTrip = async (uid, id, data) => {
   const statusParam = (typeof data.status === 'string') ? data.status : null;
   const tripCompletedParam = (typeof data.tripCompleted === 'boolean') ? data.tripCompleted : null;
   const ewayParam = (typeof data.ewayBill === 'string') ? data.ewayBill : null;
+  const ewayUrlParam = (typeof data.ewayBillUrl === 'string' || typeof data.eway_bill_url === 'string') ? (data.ewayBillUrl || data.eway_bill_url) : null;
   const dateParam = (typeof data.date === 'string') ? data.date : null;
   const progressParam = (typeof data.progress === 'number') ? data.progress : null;
   const distanceParam = (typeof data.distance === 'number') ? distance : null;
@@ -342,7 +346,6 @@ const updateTrip = async (uid, id, data) => {
   const liveFuelCountParam = (typeof data.liveFuelCount === 'number') ? data.liveFuelCount : null;
   const theftFuelLossParam = theftFuelLoss;
   const theftMoneyLossParam = theftMoneyLoss;
-  const manualOverrideParam = hasExplicitCurrentMileage ? true : null;
 
   const result = await pool.query(
       `UPDATE trips SET
@@ -375,14 +378,14 @@ const updateTrip = async (uid, id, data) => {
          fuel_saved = COALESCE($26, fuel_saved),
          fuel_wasted = COALESCE($27, fuel_wasted),
          money_saved = COALESCE($28, money_saved),
-        money_wasted = COALESCE($29, money_wasted),
-           total_idle_time = COALESCE($30, total_idle_time),
-           idle_money_wasted = COALESCE($31, idle_money_wasted),
-           theft_fuel_loss = COALESCE($32, theft_fuel_loss),
-           theft_money_loss = COALESCE($33, theft_money_loss),
-           manual_override = COALESCE($34, manual_override),
-           speeding_fuel_wasted = COALESCE($37, speeding_fuel_wasted)
-             WHERE id = $35 AND uid = $36 RETURNING *`,
+         money_wasted = COALESCE($29, money_wasted),
+         total_idle_time = COALESCE($30, total_idle_time),
+         idle_money_wasted = COALESCE($31, idle_money_wasted),
+         theft_fuel_loss = COALESCE($32, theft_fuel_loss),
+         theft_money_loss = COALESCE($33, theft_money_loss),
+         speeding_fuel_wasted = COALESCE($36, speeding_fuel_wasted),
+         eway_bill_url = COALESCE(NULLIF($37, ''), eway_bill_url)
+             WHERE id = $34 AND uid = $35 RETURNING *`,
         [
         vehicleParam,
         driverParam,
@@ -417,11 +420,10 @@ const updateTrip = async (uid, id, data) => {
         Number(idleRupees.toFixed(2)),
         theftFuelLossParam,
         theftMoneyLossParam,
-        manualOverrideParam,
         id,
         uid,
-        // param for speeding_fuel_wasted
-        speedingFuelWasted
+        speedingFuelWasted,
+        ewayUrlParam
       ]
   );
   console.log('updateTrip: rowCount=', result.rowCount, 'updated_live_speed=', result.rows[0] && (result.rows[0].live_speed || result.rows[0].liveSpeed));
