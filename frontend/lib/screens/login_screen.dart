@@ -71,6 +71,8 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!user.emailVerified) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please verify your email address before logging in.')));
           await FirebaseAuth.instance.signOut();
+          await GoogleSignIn().signOut();
+          Provider.of<DataEngine>(context, listen: false).clearData();
           setState(() => _isLoading = false);
           return;
         }
@@ -132,15 +134,24 @@ class _LoginScreenState extends State<LoginScreen> {
     // Save session immediately so app stays logged in for 7 days
     await SessionManager.saveSession(role);
 
+    // Fetch fresh data for the newly logged-in user
+    Provider.of<DataEngine>(context, listen: false).refreshData();
+
     // Navigate first — don't block on backend sync
     if (mounted) {
       if (role == 'driver') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Access Denied: Drivers are not permitted to access the fleet dashboard.'),
-            backgroundColor: AppTheme.danger,
-          ),
-        );
+        // Sign out to prevent partial driver login issues in fleet app
+        await SessionManager.clearSession();
+        await FirebaseAuth.instance.signOut();
+        await GoogleSignIn().signOut();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Access Denied: Drivers are not permitted to access the fleet dashboard.'),
+              backgroundColor: AppTheme.danger,
+            ),
+          );
+        }
         context.go('/login?role=driver');
         return;
       } else if (role == 'admin') {

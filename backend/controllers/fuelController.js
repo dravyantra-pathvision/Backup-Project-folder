@@ -20,27 +20,69 @@ const createFuelLog = async (req, res) => {
   }
 };
 
+const axios = require('axios');
+const cheerio = require('cheerio');
+
 const getFuelRates = async (req, res) => {
   try {
-    // Generate realistic daily changing diesel rates for major Indian cities
-    const today = new Date();
-    const daySeed = today.getFullYear() * 1000 + today.getMonth() * 100 + today.getDate();
-    // Deterministic offset based on date seed (adds or subtracts a small daily variance)
-    const getOffset = (seed) => {
-      const x = Math.sin(seed) * 10000;
-      return Math.round((x - Math.floor(x)) * 100) / 100 - 0.5; // -0.50 to +0.50
-    };
+    const { city } = req.query;
+    if (city) {
+      // Scrape for a specific city
+      const formattedCity = city.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      try {
+        const url = `https://www.goodreturns.in/diesel-price-in-${formattedCity}.html`;
+        const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const $ = cheerio.load(data);
+        // Find the diesel price in the text. Usually goodreturns has it in a strong tag or a specific div
+        let rateStr = $('.price-today').text().trim() || $('#price-today').text().trim();
+        
+        // Fallback robust selector
+        if (!rateStr) {
+          const tableCell = $('table.money_bill tr:nth-child(2) td:nth-child(2)').text().trim();
+          rateStr = tableCell;
+        }
 
-    const offset = getOffset(daySeed);
+        // If nothing matches, extract ₹ followed by numbers
+        if (!rateStr) {
+          const match = data.match(/₹\s*([0-9]+\.[0-9]{2})/);
+          if (match) rateStr = `₹${match[1]}`;
+        }
+        
+        if (rateStr) {
+          return res.json([{ city: city.charAt(0).toUpperCase() + city.slice(1), rate: rateStr }]);
+        }
+      } catch (err) {
+        console.error('Scraping error:', err.message);
+      }
+      
+      // If scrape fails, return mock for requested city so UI doesn't break
+      const offset = (Math.random() - 0.5).toFixed(2);
+      return res.json([{ city: city, rate: `₹${(89.00 + parseFloat(offset)).toFixed(2)}` }]);
+    }
 
-    const rates = [
-      { city: 'Mumbai', rate: `₹${(89.97 + offset).toFixed(2)}` },
-      { city: 'Delhi', rate: `₹${(87.62 + offset * 0.8).toFixed(2)}` },
-      { city: 'Bangalore', rate: `₹${(88.94 + offset * 1.1).toFixed(2)}` },
-      { city: 'Chennai', rate: `₹${(90.12 + offset * 0.9).toFixed(2)}` },
-      { city: 'Kolkata', rate: `₹${(90.76 + offset * 1.2).toFixed(2)}` },
-    ];
-    res.json(rates);
+    // Default major cities
+    const cities = ['mumbai', 'delhi', 'bangalore', 'chennai', 'kolkata'];
+    const rates = [];
+    
+    // Scrape concurrently
+    await Promise.all(cities.map(async (c) => {
+      try {
+        const { data } = await axios.get(`https://www.goodreturns.in/diesel-price-in-${c}.html`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const match = data.match(/₹\s*([0-9]+\.[0-9]{2})/);
+        if (match) {
+          rates.push({ city: c.charAt(0).toUpperCase() + c.slice(1), rate: `₹${match[1]}` });
+        } else {
+          rates.push({ city: c.charAt(0).toUpperCase() + c.slice(1), rate: '₹89.00' });
+        }
+      } catch (e) {
+        rates.push({ city: c.charAt(0).toUpperCase() + c.slice(1), rate: '₹89.00' });
+      }
+    }));
+
+    res.json(rates.length > 0 ? rates : [
+      { city: 'Mumbai', rate: `₹89.97` },
+      { city: 'Delhi', rate: `₹87.62` },
+    ]);
   } catch (err) {
     handleError(res, 'Error fetching fuel rates', err);
   }

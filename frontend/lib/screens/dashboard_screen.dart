@@ -29,6 +29,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     final engine = Provider.of<DataEngine>(context, listen: false);
     
+    // Wait for profile to load before checking completion
+    while (!engine.profileLoaded && mounted) {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    if (!mounted) return;
+
     // Check if user and org are complete
     final bool isUserComplete = engine.user.isComplete;
     final bool isOrgComplete = engine.org.isComplete;

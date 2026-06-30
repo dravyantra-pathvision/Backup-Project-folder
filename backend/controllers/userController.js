@@ -14,8 +14,9 @@ const syncUser = async (req, res) => {
 };
 
 const getProfileAndOrg = async (req, res) => {
-  const { uid } = req.user;
+  const { uid, email } = req.user;
   try {
+    await userService.syncUser(uid, email || `no-email-${uid}@example.com`, 'User', 'fleet_owner');
     const data = await userService.getProfileAndOrg(uid);
     res.json(data);
   } catch (err) {
@@ -24,7 +25,7 @@ const getProfileAndOrg = async (req, res) => {
 };
 
 const updateProfile = async (req, res) => {
-  const { uid } = req.user;
+  const { uid, email } = req.user;
   const {
     full_name, phone, timezone,
     employee_id, department, language_pref,
@@ -32,6 +33,7 @@ const updateProfile = async (req, res) => {
     speed_limit_override, fuel_theft_limit_override,
   } = req.body;
   try {
+    await userService.syncUser(uid, email || `no-email-${uid}@example.com`, full_name || 'User', 'fleet_owner');
     const user = await userService.updateProfile(uid, {
       full_name, phone, timezone,
       employee_id, department, language_pref,
@@ -45,13 +47,14 @@ const updateProfile = async (req, res) => {
 };
 
 const updateOrganization = async (req, res) => {
-  const { uid } = req.user;
+  const { uid, email } = req.user;
   const {
     company_name, gstin, pan, contact_number,
     city, state, address, pincode, country,
     fleet_size, industry_type,
   } = req.body;
   try {
+    await userService.syncUser(uid, email || `no-email-${uid}@example.com`, 'User', 'fleet_owner');
     const org = await userService.updateOrganization(uid, {
       company_name, gstin, pan, contact_number,
       city, state, address, pincode,

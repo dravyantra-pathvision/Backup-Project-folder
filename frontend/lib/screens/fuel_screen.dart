@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -5,6 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../core/theme.dart';
 import '../models/engine.dart';
 import '../widgets/live_ticker.dart';
@@ -20,6 +23,8 @@ class _FuelScreenState extends State<FuelScreen> {
   String _filter = 'all'; // all, suspect
   List<Map<String, String>> _dynamicRates = [];
   bool _loadingRates = true;
+  final TextEditingController _cityController = TextEditingController();
+  bool _searchingCity = false;
 
   @override
   void initState() {
@@ -63,6 +68,39 @@ class _FuelScreenState extends State<FuelScreen> {
     }
   }
 
+  Future<void> _searchCityRate(String city) async {
+    if (city.isEmpty) return;
+    setState(() => _searchingCity = true);
+    try {
+      final engine = Provider.of<DataEngine>(context, listen: false);
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final response = await http.get(
+        Uri.parse('${engine.baseUrl}/api/fuel_logs/rates?city=$city'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List parsed = jsonDecode(response.body) as List;
+        if (mounted && parsed.isNotEmpty) {
+          final map = parsed[0] as Map<String, dynamic>;
+          setState(() {
+            _dynamicRates.insert(0, {
+              'city': map['city']?.toString() ?? '',
+              'rate': map['rate']?.toString() ?? '',
+            });
+            _searchingCity = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Found rate for $city!')));
+        }
+      }
+    } catch (e) {
+      debugPrint('Error searching city rate: $e');
+      if (mounted) setState(() => _searchingCity = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
@@ -73,6 +111,11 @@ class _FuelScreenState extends State<FuelScreen> {
     double totalSpend = logs.fold(0, (sum, l) => sum + l.cost);
     double totalLiters = logs.fold(0, (sum, l) => sum + l.liters);
     int suspectCount = engine.fuelLogs.where((l) => l.isSuspect).length;
+    final completedTrips = engine.trips.where((t) => t.tripCompleted == true).toList();
+    final totalKm = completedTrips.fold(0.0, (s, t) => s + t.distance);
+    final totalTripFuel = completedTrips.fold(0.0, (s, t) => s + t.fuelUsed);
+    final avgMileage = totalTripFuel > 0 ? (totalKm / totalTripFuel) : 0.0;
+    final avgRate = totalLiters > 0 ? (totalSpend / totalLiters) : 0.0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -110,7 +153,7 @@ class _FuelScreenState extends State<FuelScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildKpis(totalSpend, totalLiters, suspectCount),
+          _buildKpis(totalSpend, totalLiters, suspectCount, avgRate, avgMileage),
           const SizedBox(height: 16),
           _buildAnomalyAlertsPanel(engine),
           const SizedBox(height: 16),
@@ -148,20 +191,51 @@ class _FuelScreenState extends State<FuelScreen> {
             {'city': 'Chennai', 'rate': '₹90.12'},
             {'city': 'Kolkata', 'rate': '₹90.76'},
           ];
-    return LiveTicker(
-      children: rates.map((r) {
-        return Padding(
-          padding: const EdgeInsets.only(right: 24),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(r['city']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(width: 4),
-              Text(r['rate']!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            ],
-          ),
-        );
-      }).toList(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _cityController,
+                decoration: InputDecoration(
+                  hintText: 'Search city for live fuel rate...',
+                  prefixIcon: const Icon(LucideIcons.search, size: 16),
+                  suffixIcon: _searchingCity
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : IconButton(
+                          icon: const Icon(LucideIcons.arrowRight, size: 16),
+                          onPressed: () => _searchCityRate(_cityController.text),
+                        ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                onSubmitted: _searchCityRate,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        LiveTicker(
+          children: rates.map((r) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 24),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(r['city']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  const SizedBox(width: 4),
+                  Text(r['rate']!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -209,20 +283,20 @@ class _FuelScreenState extends State<FuelScreen> {
     );
   }
 
-  Widget _buildKpis(double spend, double liters, int suspect) {
+  Widget _buildKpis(double spend, double liters, int suspect, double avgRate, double avgMileage) {
     return Column(
       children: [
         Row(
           children: [
-            Expanded(child: _kpiCard('Total Spend', '₹${spend.toStringAsFixed(0)}', 'Budget: ₹6,65,000', AppTheme.primaryBlue)),
+            Expanded(child: _kpiCard('Total Spend', '₹${spend.toStringAsFixed(0)}', 'Overall fuel spend', AppTheme.primaryBlue)),
             const SizedBox(width: 12),
-            Expanded(child: _kpiCard('Total Consumed', '${liters.toStringAsFixed(0)} L', 'Avg rate: ₹92.5/L', AppTheme.success)),
+            Expanded(child: _kpiCard('Total Consumed', '${liters.toStringAsFixed(0)} L', 'Avg rate: ₹${avgRate.toStringAsFixed(1)}/L', AppTheme.success)),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _kpiCard('Fleet Avg Mileage', '4.2 km/L', 'Target: 4.5 km/L', Colors.deepPurple)),
+            Expanded(child: _kpiCard('Fleet Avg Mileage', '${avgMileage.toStringAsFixed(1)} km/L', 'Target: 4.5 km/L', Colors.deepPurple)),
             const SizedBox(width: 12),
             Expanded(child: _kpiCard('Suspect Logs', '$suspect', 'Flagged for review', AppTheme.danger)),
           ],
@@ -346,34 +420,89 @@ class _FuelScreenState extends State<FuelScreen> {
   }
 
   void _exportLogs(BuildContext context) async {
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppTheme.primaryBlue,
+    try {
+      final picked = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2020),
+        lastDate: DateTime.now(),
+        builder: (context, child) {
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(
+                primary: AppTheme.primaryBlue,
+              ),
             ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Generating fuel report...'), duration: Duration(seconds: 1)),
+            child: child!,
+          );
+        },
       );
-      await Future.delayed(const Duration(seconds: 1));
+
+      if (picked != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Generating fuel report...'), duration: Duration(seconds: 1)),
+        );
+        
+        final engine = Provider.of<DataEngine>(context, listen: false);
+        final start = picked.start;
+        final end = picked.end;
+        
+        final filteredLogs = engine.fuelLogs.where((l) {
+          try {
+            // Handle various date formats: YYYY-MM-DD or DD-MM-YYYY or DD/MM/YYYY
+            String cleanDate = l.date.replaceAll('/', '-');
+            final parts = cleanDate.split('-');
+            if (parts.length != 3) return false;
+            
+            int p0 = int.parse(parts[0]);
+            int p1 = int.parse(parts[1]);
+            int p2 = int.parse(parts[2]);
+            
+            DateTime d;
+            if (p0 > 1000) {
+              // YYYY-MM-DD
+              d = DateTime(p0, p1, p2);
+            } else {
+              // DD-MM-YYYY
+              d = DateTime(p2, p1, p0);
+            }
+            
+            return d.isAfter(start.subtract(const Duration(days: 1))) && d.isBefore(end.add(const Duration(days: 1)));
+          } catch (_) {
+            return false;
+          }
+        }).toList();
+
+        String csv = 'Log ID,Vehicle,Driver,Date,Station,Liters,Rate,Amount,Odometer,Status,Suspect Reason\n';
+        for (var l in filteredLogs) {
+          final reason = l.suspectReason?.replaceAll('"', '""') ?? '';
+          final station = l.station.replaceAll('"', '""');
+          csv += '${l.id},${l.vehicle},${l.driver},${l.date},"$station",${l.liters},${l.rate},${l.cost},${l.odometer},${l.isSuspect ? "Suspect" : "Clear"},"$reason"\n';
+        }
+
+        final dir = await getTemporaryDirectory();
+        final startStr = '${start.day}-${start.month}-${start.year}';
+        final endStr = '${end.day}-${end.month}-${end.year}';
+        final file = File('${dir.path}/fuel_logs_${startStr}_to_$endStr.csv');
+        await file.writeAsString(csv);
+        
+        final result = await Share.shareXFiles([XFile(file.path)], text: 'DravYantra Fuel Logs ($startStr to $endStr)');
+        
+        if (mounted && result.status == ShareResultStatus.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Fuel logs downloaded successfully.'),
+              backgroundColor: AppTheme.success,
+            ),
+          );
+        }
+      }
+    } catch (e) {
       if (mounted) {
-        final start = '${picked.start.day.toString().padLeft(2, '0')}/${picked.start.month.toString().padLeft(2, '0')}/${picked.start.year}';
-        final end = '${picked.end.day.toString().padLeft(2, '0')}/${picked.end.month.toString().padLeft(2, '0')}/${picked.end.year}';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Fuel logs ($start to $end) downloaded successfully.'),
-            backgroundColor: AppTheme.success,
+            content: Text('Error generating CSV: $e'),
+            backgroundColor: AppTheme.danger,
+            duration: const Duration(seconds: 4),
           ),
         );
       }

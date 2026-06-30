@@ -14,11 +14,18 @@ const generateReport = async (req, res) => {
     let fields = [];
     let filename = '';
 
+    let dateFilter = '';
+    if (type.startsWith('daily_')) {
+      dateFilter = `AND created_at >= CURRENT_DATE`;
+    } else if (type.startsWith('monthly_')) {
+      dateFilter = `AND created_at >= CURRENT_DATE - INTERVAL '1 month'`;
+    }
+
     switch (type) {
       case 'fleet_summary':
       case 'daily_fleet_summary': {
-        const r = await pool.query(`SELECT * FROM trips WHERE uid=$1 ORDER BY created_at DESC LIMIT 500`, [uid]);
-        fields = ['id','vehicle','driver','from_location','to_location','status','distance','fuel_used','money_wasted','money_saved','date'];
+        const r = await pool.query(`SELECT id,vehicle,driver,from_location,to_location,status,distance,fuel_used,date FROM trips WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC LIMIT 500`, [uid]);
+        fields = ['id','vehicle','driver','from_location','to_location','status','distance','fuel_used','date'];
         data = r.rows;
         filename = 'fleet_summary';
         break;
@@ -32,15 +39,15 @@ const generateReport = async (req, res) => {
       }
       case 'fuel_audit':
       case 'monthly_fuel_audit': {
-        const r = await pool.query(`SELECT * FROM fuel_logs WHERE uid=$1 ORDER BY created_at DESC`, [uid]);
+        const r = await pool.query(`SELECT id,vehicle,driver,station,liters,rate,cost,odometer,date,is_suspect,suspect_reason FROM fuel_logs WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC`, [uid]);
         fields = ['id','vehicle','driver','station','liters','rate','cost','odometer','date','is_suspect','suspect_reason'];
         data = r.rows;
         filename = 'fuel_audit';
         break;
       }
       case 'expense_toll': {
-        const r = await pool.query(`SELECT id,vehicle,driver,toll_count,money_wasted,date FROM trips WHERE uid=$1 ORDER BY date DESC`, [uid]);
-        fields = ['id','vehicle','driver','toll_count','money_wasted','date'];
+        const r = await pool.query(`SELECT id,vehicle,driver,toll_count,date FROM trips WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC`, [uid]);
+        fields = ['id','vehicle','driver','toll_count','date'];
         data = r.rows;
         filename = 'expense_toll';
         break;
@@ -53,15 +60,15 @@ const generateReport = async (req, res) => {
         break;
       }
       case 'trip_efficiency': {
-        const r = await pool.query(`SELECT id,vehicle,driver,from_location,to_location,distance,fuel_used,current_mileage,default_mileage,delay_minutes,score,status FROM trips WHERE uid=$1 ORDER BY date DESC`, [uid]);
-        fields = ['id','vehicle','driver','from_location','to_location','distance','fuel_used','current_mileage','default_mileage','delay_minutes','score','status'];
+        const r = await pool.query(`SELECT id,vehicle,driver,from_location,to_location,distance,fuel_used,delay_minutes,score,status FROM trips WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC`, [uid]);
+        fields = ['id','vehicle','driver','from_location','to_location','distance','fuel_used','delay_minutes','score','status'];
         data = r.rows;
         filename = 'trip_efficiency';
         break;
       }
       case 'idle_analysis': {
-        const r = await pool.query(`SELECT id,vehicle,driver,idle_duration,idle_money_wasted,total_idle_time,status,date FROM trips WHERE uid=$1 ORDER BY idle_duration DESC`, [uid]);
-        fields = ['id','vehicle','driver','idle_duration','idle_money_wasted','total_idle_time','status','date'];
+        const r = await pool.query(`SELECT id,vehicle,driver,idle_duration,status,date FROM trips WHERE uid=$1 ${dateFilter} ORDER BY idle_duration DESC`, [uid]);
+        fields = ['id','vehicle','driver','idle_duration','status','date'];
         data = r.rows;
         filename = 'idle_analysis';
         break;
@@ -74,8 +81,8 @@ const generateReport = async (req, res) => {
         break;
       }
       case 'client_billing': {
-        const r = await pool.query(`SELECT id,client,vehicle,driver,from_location,to_location,load,distance,fuel_used,money_wasted,date,status FROM trips WHERE uid=$1 ORDER BY date DESC`, [uid]);
-        fields = ['id','client','vehicle','driver','from_location','to_location','load','distance','fuel_used','money_wasted','date','status'];
+        const r = await pool.query(`SELECT id,client,vehicle,driver,from_location,to_location,load,distance,fuel_used,date,status FROM trips WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC`, [uid]);
+        fields = ['id','client','vehicle','driver','from_location','to_location','load','distance','fuel_used','date','status'];
         data = r.rows;
         filename = 'client_billing';
         break;

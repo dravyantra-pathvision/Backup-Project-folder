@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../core/theme.dart';
-
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
@@ -174,6 +174,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () async {
               await SessionManager.clearSession();
               await FirebaseAuth.instance.signOut();
+              await GoogleSignIn().signOut();
+              Provider.of<DataEngine>(context, listen: false).clearData();
               if (context.mounted) {
                 context.go('/role-selection');
               }
@@ -501,12 +503,13 @@ class _OrgProfileSubScreenState extends State<OrgProfileSubScreen> {
     return role.contains('fleet') || role.contains('admin');
   }
 
-  Future<bool> _updateField(String label, String value, Organization Function(Organization, String) updater) async {
+  Future<bool> _updateField(String label, String value, Organization Function(Organization, String) updater, {String? Function(String?)? validator}) async {
     if (!_canEdit()) return false;
     final success = await showSingleEditSheet(
       context: context,
       title: label,
       initialValue: value,
+      validator: validator,
       onSave: (newVal) async {
         final newOrg = updater(widget.engine.org, newVal);
         final ok = await widget.engine.saveOrgProfile(newOrg);
@@ -651,9 +654,19 @@ class _OrgProfileSubScreenState extends State<OrgProfileSubScreen> {
           Align(alignment: Alignment.centerLeft, child: _buildSectionDivider('COMPANY INFO')),
           _buildSettingRow('Company Name', org.name, readOnly: !canEdit, onTap: () => _updateField('Company Name', org.name, (o, v) => o.copyWith(name: v))),
           const Divider(height: 1),
-          _buildSettingRow('GSTIN', org.gstin, readOnly: !canEdit, onTap: () => _updateField('GSTIN', org.gstin, (o, v) => o.copyWith(gstin: v))),
+          _buildSettingRow('GSTIN', org.gstin, readOnly: !canEdit, onTap: () => _updateField('GSTIN', org.gstin, (o, v) => o.copyWith(gstin: v), validator: (value) {
+            if (value != null && value.isNotEmpty && !RegExp(r'^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}$', caseSensitive: false).hasMatch(value)) {
+              return 'Invalid GSTIN format';
+            }
+            return null;
+          })),
           const Divider(height: 1),
-          _buildSettingRow('PAN', org.pan, readOnly: !canEdit, onTap: () => _updateField('PAN', org.pan, (o, v) => o.copyWith(pan: v))),
+          _buildSettingRow('PAN', org.pan, readOnly: !canEdit, onTap: () => _updateField('PAN', org.pan, (o, v) => o.copyWith(pan: v), validator: (value) {
+            if (value != null && value.isNotEmpty && !RegExp(r'^[A-Z]{5}\d{4}[A-Z]{1}$', caseSensitive: false).hasMatch(value)) {
+              return 'Invalid PAN format';
+            }
+            return null;
+          })),
           const Divider(height: 1),
           _buildSettingRow('Company Address', org.address ?? '', readOnly: !canEdit, onTap: () => _updateField('Company Address', org.address ?? '', (o, v) => o.copyWith(address: v))),
           const Divider(height: 1),
@@ -661,13 +674,27 @@ class _OrgProfileSubScreenState extends State<OrgProfileSubScreen> {
           const Divider(height: 1),
           _buildSettingRow('State', org.state, readOnly: !canEdit, onTap: () => _updateField('State', org.state, (o, v) => o.copyWith(state: v))),
           const Divider(height: 1),
-          _buildSettingRow('Pincode', org.pincode ?? '', readOnly: !canEdit, onTap: () => _updateField('Pincode', org.pincode ?? '', (o, v) => o.copyWith(pincode: v))),
+          _buildSettingRow('Pincode', org.pincode ?? '', readOnly: !canEdit, onTap: () => _updateField('Pincode', org.pincode ?? '', (o, v) => o.copyWith(pincode: v), validator: (value) {
+            if (value != null && value.isNotEmpty && !RegExp(r'^[1-9][0-9]{5}$').hasMatch(value)) {
+              return 'Invalid Indian Pincode';
+            }
+            return null;
+          })),
           const Divider(height: 1),
           _buildSettingRow('Country', org.country, readOnly: !canEdit, onTap: () => _updateField('Country', org.country, (o, v) => o.copyWith(country: v))),
           
           const SizedBox(height: 24),
           Align(alignment: Alignment.centerLeft, child: _buildSectionDivider('CONTACT & FLEET')),
-          _buildSettingRow('Contact Email / Phone', org.contact, readOnly: !canEdit, onTap: () => _updateField('Contact', org.contact, (o, v) => o.copyWith(contact: v))),
+          _buildSettingRow('Contact Email / Phone', org.contact, readOnly: !canEdit, onTap: () => _updateField('Contact', org.contact, (o, v) => o.copyWith(contact: v), validator: (value) {
+            if (value != null && value.isNotEmpty) {
+              if (value.contains('@')) {
+                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) return 'Invalid Email';
+              } else {
+                if (!RegExp(r'^(\+91[\-\s]?)?[6-9]\d{9}$').hasMatch(value.replaceAll(RegExp(r'\s+'), ''))) return 'Invalid Indian Mobile Number';
+              }
+            }
+            return null;
+          })),
           const Divider(height: 1),
           _buildSettingRow('Fleet Size', org.fleetSize ?? '', readOnly: !canEdit, onTap: () => _updateField('Fleet Size', org.fleetSize ?? '', (o, v) => o.copyWith(fleetSize: v))),
           const Divider(height: 1),
@@ -822,11 +849,12 @@ class UserProfileSubScreen extends StatefulWidget {
 }
 
 class _UserProfileSubScreenState extends State<UserProfileSubScreen> {
-  Future<bool> _updateField(String label, String value, UserAccount Function(UserAccount, String) updater) async {
+  Future<bool> _updateField(String label, String value, UserAccount Function(UserAccount, String) updater, {String? Function(String?)? validator}) async {
     final success = await showSingleEditSheet(
       context: context,
       title: label,
       initialValue: value,
+      validator: validator,
       onSave: (newVal) async {
         final newUser = updater(widget.engine.user, newVal);
         final ok = await widget.engine.saveUserProfile(newUser);
@@ -905,7 +933,12 @@ class _UserProfileSubScreenState extends State<UserProfileSubScreen> {
           const Divider(height: 1),
           _buildSettingRow('Work Email', u.email, readOnly: true),
           const Divider(height: 1),
-          _buildSettingRow('Phone Number', u.phone, onTap: () => _updateField('Phone Number', u.phone, (u, v) => u.copyWith(phone: v))),
+          _buildSettingRow('Phone Number', u.phone, onTap: () => _updateField('Phone Number', u.phone, (u, v) => u.copyWith(phone: v), validator: (value) {
+            if (value != null && value.isNotEmpty) {
+              if (!RegExp(r'^(\+91[\-\s]?)?[6-9]\d{9}$').hasMatch(value.replaceAll(RegExp(r'\s+'), ''))) return 'Invalid Indian Mobile Number';
+            }
+            return null;
+          })),
           const Divider(height: 1),
           _buildSettingRow('Employee ID', u.employeeId ?? '', onTap: () => _updateField('Employee ID', u.employeeId ?? '', (u, v) => u.copyWith(employeeId: v))),
           const Divider(height: 1),
@@ -1123,6 +1156,9 @@ class _AlertThresholdsSubScreenState extends State<AlertThresholdsSubScreen> {
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
     final settings = engine.alertSettings;
+    
+    final orgEmail = engine.org.contact.contains('@') ? engine.org.contact : engine.user.email;
+    final orgPhone = !engine.org.contact.contains('@') && engine.org.contact.isNotEmpty ? engine.org.contact : engine.user.phone;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -1139,13 +1175,13 @@ class _AlertThresholdsSubScreenState extends State<AlertThresholdsSubScreen> {
           const Divider(height: 48),
           const Text('Notification Channels', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
-          _buildChannelToggle('WhatsApp Alerts', 'Critical safety and fuel events', settings.whatsappEnabled, (v) {
+          _buildChannelToggle('WhatsApp Alerts', 'Sent to: ${orgPhone.isEmpty ? 'Not set' : orgPhone}', settings.whatsappEnabled, (v) {
             engine.updateAlertSettings(settings.copyWith(whatsappEnabled: v));
           }),
-          _buildChannelToggle('SMS Alerts', 'Compliance and network events', settings.smsEnabled, (v) {
+          _buildChannelToggle('SMS Alerts', 'Sent to: ${orgPhone.isEmpty ? 'Not set' : orgPhone}', settings.smsEnabled, (v) {
             engine.updateAlertSettings(settings.copyWith(smsEnabled: v));
           }),
-          _buildChannelToggle('Email Alerts', 'Reports and non-critical updates', settings.emailEnabled, (v) {
+          _buildChannelToggle('Email Alerts', 'Sent to: ${orgEmail.isEmpty ? 'Not set' : orgEmail}', settings.emailEnabled, (v) {
             engine.updateAlertSettings(settings.copyWith(emailEnabled: v));
           }),
           _buildChannelToggle('Push Notifications', 'Real-time dashboard updates', settings.pushEnabled, (v) {

@@ -74,6 +74,8 @@ class _SignupScreenState extends State<SignupScreen> {
                 ElevatedButton(
                   onPressed: () {
                     FirebaseAuth.instance.signOut();
+                    GoogleSignIn().signOut();
+                    Provider.of<DataEngine>(context, listen: false).clearData();
                     context.go('/login');
                   },
                   style: ElevatedButton.styleFrom(

@@ -69,6 +69,7 @@ const initDB = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         plate VARCHAR(50) PRIMARY KEY,
+        device_id VARCHAR(100) UNIQUE,
         uid VARCHAR(128) REFERENCES users(uid) ON DELETE CASCADE,
         model VARCHAR(255),
         year INTEGER,
@@ -291,6 +292,7 @@ const initDB = async () => {
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rc_url TEXT;`);
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_url TEXT;`);
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS puc_url TEXT;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS device_id VARCHAR(100);`);
 
     // trips
     await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_completed BOOLEAN DEFAULT FALSE;`);

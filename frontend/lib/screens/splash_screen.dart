@@ -75,44 +75,80 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _animationController,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _fadeAnimation.value,
-              child: Transform.scale(
-                scale: _scaleAnimation.value,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
+      body: Stack(
+        children: [
+          Center(
+            child: AnimatedBuilder(
+              animation: _animationController,
+              builder: (context, child) {
+                return Opacity(
+                  opacity: _fadeAnimation.value,
+                  child: Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(LucideIcons.truck, size: logoSize * 0.4, color: AppTheme.primaryBlue),
-                        SizedBox(width: logoSize * 0.1),
-                        Icon(LucideIcons.mapPin, size: logoSize * 0.5, color: AppTheme.success),
-                        SizedBox(width: logoSize * 0.1),
-                        Icon(LucideIcons.fuel, size: logoSize * 0.4, color: AppTheme.warning),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(LucideIcons.truck, size: logoSize * 0.4, color: AppTheme.primaryBlue),
+                            SizedBox(width: logoSize * 0.1),
+                            Icon(LucideIcons.mapPin, size: logoSize * 0.5, color: AppTheme.success),
+                            SizedBox(width: logoSize * 0.1),
+                            Icon(LucideIcons.fuel, size: logoSize * 0.4, color: AppTheme.warning),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'DravYantra',
+                          style: TextStyle(
+                            fontSize: logoSize * 0.12,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'DravYantra',
-                      style: TextStyle(
-                        fontSize: logoSize * 0.12,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryBlue,
-                        letterSpacing: -0.5,
+                  ),
+                );
+              },
+            ),
+          ),
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: AnimatedBuilder(
+              animation: _fadeAnimation,
+              builder: (context, child) {
+                return Opacity(
+                  opacity: _fadeAnimation.value,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'from',
+                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Pathvision Innovations',
+                        style: TextStyle(
+                          color: AppTheme.primaryBlue,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

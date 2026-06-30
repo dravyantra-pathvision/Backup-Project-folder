@@ -36,6 +36,39 @@ const createAlert = async (req, res) => {
        RETURNING *`,
       [uid, plate, driver, type, message, severity, category, detectedAtVal]
     );
+    
+    // Simulate Notification Push Dispatch
+    try {
+      const settingsRes = await pool.query(`SELECT whatsapp_enabled, sms_enabled, email_enabled, push_enabled FROM fleet_settings WHERE uid = $1`, [uid]);
+      const orgRes = await pool.query(`SELECT contact FROM organization WHERE uid = $1`, [uid]);
+      const userRes = await pool.query(`SELECT email, phone FROM users WHERE uid = $1`, [uid]);
+      
+      if (settingsRes.rows.length > 0) {
+        const settings = settingsRes.rows[0];
+        const org = orgRes.rows[0] || {};
+        const user = userRes.rows[0] || {};
+        
+        const contact = org.contact || '';
+        const email = contact.includes('@') ? contact : (user.email || '');
+        const phone = !contact.includes('@') && contact ? contact : (user.phone || '');
+        
+        if (settings.whatsapp_enabled && phone) {
+          console.log(`✅ [WhatsApp API] Pushing ALERT "${message}" to ${phone}`);
+        }
+        if (settings.sms_enabled && phone) {
+          console.log(`📱 [SMS API] Pushing ALERT "${message}" to ${phone}`);
+        }
+        if (settings.email_enabled && email) {
+          console.log(`📧 [Email API] Pushing ALERT "${message}" to ${email}`);
+        }
+        if (settings.push_enabled) {
+          console.log(`🔔 [FCM Push] Pushing ALERT "${message}" to device`);
+        }
+      }
+    } catch (pushErr) {
+      console.error('[Notification Engine] Failed to dispatch alert:', pushErr);
+    }
+    
     res.status(201).json(mapAlertRow(result.rows[0]));
   } catch (err) {
     handleError(res, 'Error creating alert', err);

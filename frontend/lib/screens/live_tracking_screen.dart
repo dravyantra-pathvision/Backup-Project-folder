@@ -30,8 +30,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
       bool matchesFilter = _selectedFilter == 'all' || v.status == _selectedFilter;
       bool matchesSearch = _searchQuery.isEmpty || 
           v.plate.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          v.driver.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          v.model.toLowerCase().contains(_searchQuery.toLowerCase());
+          v.driver.toLowerCase().contains(_searchQuery.toLowerCase());
       return matchesFilter && matchesSearch;
     }).toList();
     
@@ -329,7 +328,7 @@ class _VehicleDetailPanel extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(vehicle.plate, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      Text('${vehicle.model} • ${vehicle.type}', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                      Text(vehicle.type, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
                     ],
                   ),
                 ),

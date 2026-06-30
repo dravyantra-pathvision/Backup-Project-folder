@@ -450,6 +450,21 @@ class _TripFormDialogState extends State<_TripFormDialog> {
   Set<String> _availableDriverNames = {};
   Set<String> _availableVehiclePlates = {};
 
+  List<City> _getRecentCities() {
+    final trips = widget.engine.trips;
+    final Map<String, City> uniqueCities = {};
+    for (final t in trips.reversed) {
+      if (t.from.isNotEmpty && !uniqueCities.containsKey(t.from)) {
+        uniqueCities[t.from] = City(name: t.from, state: '', latitude: null, longitude: null);
+      }
+      if (t.to.isNotEmpty && !uniqueCities.containsKey(t.to)) {
+        uniqueCities[t.to] = City(name: t.to, state: '', latitude: null, longitude: null);
+      }
+      if (uniqueCities.length > 5) break;
+    }
+    return uniqueCities.values.toList();
+  }
+
   Widget _buildUploadRow(String label, bool isUploaded, bool isUploading, VoidCallback onUpload) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
@@ -596,7 +611,7 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                   items: displayedVehicles.map((v) {
                     return DropdownMenuItem<String>(
                       value: v.plate,
-                      child: Text('${v.plate} (${v.model})', overflow: TextOverflow.ellipsis),
+                      child: Text('${v.plate} (${v.type})', overflow: TextOverflow.ellipsis),
                     );
                   }).toList(),
                   onChanged: (val) => setState(() => _selectedVehicle = val),
@@ -636,7 +651,10 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                               final City? selected = await Navigator.push<City>(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const CitySearchScreen(title: 'Leaving From'),
+                                  builder: (context) => CitySearchScreen(
+                                    title: 'Leaving From',
+                                    recentCities: _getRecentCities(),
+                                  ),
                                 ),
                               );
                               if (selected != null) {
@@ -667,7 +685,10 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                               final City? selected = await Navigator.push<City>(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const CitySearchScreen(title: 'Going To'),
+                                  builder: (context) => CitySearchScreen(
+                                    title: 'Going To',
+                                    recentCities: _getRecentCities(),
+                                  ),
                                 ),
                               );
                               if (selected != null) {
@@ -1081,9 +1102,22 @@ class _TripDetailDrawer extends StatelessWidget {
                   ),
                 if (trip.status == 'running' || trip.status == 'idle') ...[
                   ElevatedButton(
+                    onPressed: () => onStatusUpdate('paused'),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.warning, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                    child: const Text('Stop Vehicle (Pause Trip)'),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
                     onPressed: () => onStatusUpdate('completed'),
-                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-                    child: const Text('Stop Trip'),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.ecoGreen, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                    child: const Text('Mark as Completed'),
+                  ),
+                ],
+                if (trip.status == 'paused') ...[
+                  ElevatedButton(
+                    onPressed: () => onStatusUpdate('running'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                    child: const Text('Resume Trip'),
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton(

@@ -107,7 +107,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final dateStr = '${now.day}/${now.month}/${now.year}';
 
       // Compute analytics
-      final completedTrips = engine.trips.where((t) => t.tripCompleted == true).toList();
+      final completedTrips = engine.trips.where((t) {
+        if (t.tripCompleted != true) return false;
+        try {
+          final tripDate = DateTime.parse(t.date);
+          if (_dateRange == 'This Year') {
+            return tripDate.year == now.year;
+          } else {
+            int days = 30;
+            if (_dateRange == 'Last 7 Days') days = 7;
+            else if (_dateRange == 'Last 90 Days') days = 90;
+            return now.difference(tripDate).inDays <= days;
+          }
+        } catch (_) {
+          return true; // Fallback for trips without valid date
+        }
+      }).toList();
       final totalKm = completedTrips.fold(0.0, (s, t) => s + t.distance);
       final totalFuel = completedTrips.fold(0.0, (s, t) => s + t.fuelUsed);
       final avgMileage = totalFuel > 0 ? totalKm / totalFuel : 0.0;
@@ -152,7 +167,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
       final bytes = await pdf.save();
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/fleet_analytics_$dateStr.pdf'.replaceAll('/', '-'));
+      final safeDateStr = dateStr.replaceAll('/', '-');
+      final file = File('${dir.path}/fleet_analytics_$safeDateStr.pdf');
       await file.writeAsBytes(bytes);
 
       await Share.shareXFiles([XFile(file.path)], text: 'DravYantra Fleet Analytics Report');

@@ -24,6 +24,7 @@ const uploadRoutes = require('./routes/uploadRoutes');
 const alertsRoutes = require('./routes/alertsRoutes');
 const fleetSettingsRoutes = require('./routes/fleetSettingsRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const telemetryRoutes = require('./routes/telemetryRoutes');
 const tripUpdater = require('./services/tripUpdater');
 const dbListener = require('./services/dbListener');
 const dbPoller = require('./services/dbPoller');
@@ -60,6 +61,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/alerts', alertsRoutes);
 app.use('/api/fleet-settings', fleetSettingsRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/telemetry', telemetryRoutes);
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));

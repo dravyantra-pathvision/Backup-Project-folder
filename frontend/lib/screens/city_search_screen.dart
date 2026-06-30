@@ -7,8 +7,9 @@ import '../core/theme.dart';
 
 class CitySearchScreen extends StatefulWidget {
   final String title; // "Leaving From" or "Going To"
+  final List<City> recentCities;
 
-  const CitySearchScreen({super.key, required this.title});
+  const CitySearchScreen({super.key, required this.title, this.recentCities = const []});
 
   @override
   State<CitySearchScreen> createState() => _CitySearchScreenState();
@@ -234,6 +235,38 @@ class _CitySearchScreenState extends State<CitySearchScreen> {
 
     // Initial state — no search yet
     if (!_hasSearched) {
+      if (widget.recentCities.isNotEmpty) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Text('Recent Locations', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+            ),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                itemCount: widget.recentCities.length,
+                separatorBuilder: (_, __) => Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  color: Colors.grey.shade200,
+                  indent: 64,
+                ),
+                itemBuilder: (context, index) {
+                  final city = widget.recentCities[index];
+                  return _CityTile(
+                    city: city,
+                    query: '',
+                    onTap: () => _selectCity(city),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      }
+
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

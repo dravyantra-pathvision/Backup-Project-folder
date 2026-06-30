@@ -6,10 +6,14 @@ const syncUser = async (uid, email, fullName, role) => {
 
   if (existingEmail.rows.length > 0) {
     const existingUser = existingEmail.rows[0];
-      if (existingUser.uid !== uid) {
+    if (existingUser.uid !== uid) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        // 1. Create the new user with a temporary email to satisfy foreign key constraints
+        await client.query(`INSERT INTO users (uid, email, full_name, role) VALUES ($1, $2, $3, $4)`, [uid, email + '_temp_' + Date.now(), fullName || existingUser.full_name, role || existingUser.role]);
+        
+        // 2. Migrate all child records to the new uid
         await client.query(`UPDATE fleet_onboarding SET uid=$1 WHERE uid=$2`, [uid, existingUser.uid]);
         await client.query(`UPDATE vehicles SET uid=$1 WHERE uid=$2`, [uid, existingUser.uid]);
         await client.query(`UPDATE drivers SET uid=$1 WHERE uid=$2`, [uid, existingUser.uid]);
@@ -17,9 +21,14 @@ const syncUser = async (uid, email, fullName, role) => {
         await client.query(`UPDATE trips SET uid=$1 WHERE uid=$2`, [uid, existingUser.uid]);
         await client.query(`UPDATE fleet_settings SET uid=$1 WHERE uid=$2`, [uid, existingUser.uid]);
         await client.query(`UPDATE alerts SET uid=$1 WHERE uid=$2`, [uid, existingUser.uid]);
+        
+        // 3. Delete the old user (frees up the original email)
+        await client.query(`DELETE FROM users WHERE uid=$1`, [existingUser.uid]);
+        
+        // 4. Update the new user with the original email
         const result = await client.query(
-          `UPDATE users SET uid=$1, full_name=COALESCE(full_name, $2), role=COALESCE(role, $3) WHERE uid=$4 RETURNING *`,
-          [uid, fullName, role, existingUser.uid]
+          `UPDATE users SET email=$1 WHERE uid=$2 RETURNING *`,
+          [email, uid]
         );
         await client.query('COMMIT');
         return result.rows[0];

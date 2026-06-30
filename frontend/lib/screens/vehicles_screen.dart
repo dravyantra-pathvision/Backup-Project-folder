@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import '../models/engine.dart';
 import '../core/theme.dart';
+import '../widgets/qr_scanner_dialog.dart';
 
 class VehiclesScreen extends StatefulWidget {
   const VehiclesScreen({super.key});
@@ -116,7 +117,6 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                         runSpacing: 8,
                         alignment: isNarrow ? WrapAlignment.start : WrapAlignment.end,
                         children: [
-                          OutlinedButton.icon(onPressed: () {}, icon: const Icon(LucideIcons.download, size: 14), label: const Text('Export')),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
                             onPressed: () => _showVehicleForm(context, engine), 
@@ -296,7 +296,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(v.plate, style: TextStyle(fontWeight: FontWeight.bold, color: v.isActive ? AppTheme.primaryBlue : AppTheme.textSecondary)),
-                          Text(v.model, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                          Text(v.type, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                         ],
                       )),
                       DataCell(Text(v.driver)),
@@ -418,7 +418,7 @@ class _VehicleFormDialog extends StatefulWidget {
 class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _plateCtrl;
-  late TextEditingController _modelCtrl;
+  late TextEditingController _deviceIdCtrl;
   
   DateTime? _rcRegDate;
   DateTime? _rcExpDate;
@@ -441,7 +441,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   void initState() {
     super.initState();
     _plateCtrl = TextEditingController(text: widget.vehicle?.plate ?? '');
-    _modelCtrl = TextEditingController(text: widget.vehicle?.model ?? '');
+    _deviceIdCtrl = TextEditingController(text: widget.vehicle?.deviceId ?? '');
     
     if (widget.vehicle != null) {
       _insExpDate = DateTime.tryParse(widget.vehicle!.insurance);
@@ -458,7 +458,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   @override
   void dispose() {
     _plateCtrl.dispose();
-    _modelCtrl.dispose();
+    _deviceIdCtrl.dispose();
     super.dispose();
   }
 
@@ -585,7 +585,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
       if (widget.vehicle == null) {
         await widget.engine.addVehicle(Vehicle(
           plate: _plateCtrl.text.toUpperCase(), 
-          model: _modelCtrl.text, 
+          deviceId: _deviceIdCtrl.text.trim(),
           year: _rcRegDate?.year ?? 2024, 
           type: 'HCV', 
           status: 'offline', 
@@ -613,7 +613,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
         ));
       } else {
         await widget.engine.updateVehicle(widget.vehicle!.copyWith(
-          model: _modelCtrl.text,
+          deviceId: _deviceIdCtrl.text.trim(),
           insurance: _insExpDate != null ? _insExpDate!.toIso8601String().split('T').first : widget.vehicle!.insurance,
           puc: _pucExpDate != null ? _pucExpDate!.toIso8601String().split('T').first : widget.vehicle!.puc,
           imageUrl: _rcFileUrl ?? _insFileUrl ?? _pucFileUrl ?? widget.vehicle!.imageUrl,
@@ -652,10 +652,47 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
                   },
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _modelCtrl,
-                  decoration: const InputDecoration(labelText: 'Vehicle Model (e.g. Tata Prima)'),
-                  validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                const SizedBox(height: 12),
+                const Text('Hardware Device ID (Microcontroller UID)', style: TextStyle(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(LucideIcons.scanLine, size: 18),
+                      label: const Text('Scan QR'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
+                        foregroundColor: AppTheme.primaryBlue,
+                        elevation: 0,
+                      ),
+                      onPressed: () async {
+                        final scannedId = await showDialog<String>(
+                          context: context,
+                          builder: (ctx) => const QrScannerDialog(),
+                        );
+                        if (scannedId != null && scannedId.isNotEmpty) {
+                          setState(() {
+                            _deviceIdCtrl.text = scannedId;
+                          });
+                        }
+                      },
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text('OR', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+                    ),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _deviceIdCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'Manual Entry',
+                          isDense: true,
+                        ),
+                        validator: (value) => value == null || value.isEmpty ? 'Required for telemetry' : null,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 24),
                 const Text('Compliance Documents', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -758,7 +795,7 @@ class _VehicleDetailDrawer extends StatelessWidget {
                     IconButton(onPressed: onClose, icon: const Icon(Icons.close, color: Colors.white)),
                   ],
                 ),
-                Text('${vehicle.model} • ${vehicle.type}', style: TextStyle(color: Colors.white.withOpacity(0.8))),
+                Text(vehicle.type, style: TextStyle(color: Colors.white.withOpacity(0.8))),
                 const SizedBox(height: 16),
                 Row(
                   children: [

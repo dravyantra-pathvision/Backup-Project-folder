@@ -8,6 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
 import '../core/theme.dart';
 import '../models/engine.dart';
 
@@ -68,7 +71,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  Future<void> _downloadReport(String title, String type) async {
+  Future<void> _handleReportAction(String title, String type, String action) async {
     final engine = context.read<DataEngine>();
     setState(() => _downloadingReports.add(type));
 
@@ -89,22 +92,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
-        final dir = await getTemporaryDirectory();
         final dateStr = DateTime.now().toIso8601String().split('T')[0];
-        final file = File('${dir.path}/dravyantra_${type}_$dateStr.csv');
-        await file.writeAsBytes(response.bodyBytes);
+        final filename = 'dravyantra_${type}_$dateStr';
 
-        await Share.shareXFiles([XFile(file.path)], text: 'DravYantra $title');
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ $title ready to share!'),
-              backgroundColor: AppTheme.success,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+        if (action == 'view') {
+          // Parse CSV and display dialog
+          final decoded = utf8.decode(response.bodyBytes);
+          final rows = const CsvToListConverter().convert(decoded);
+          if (mounted) {
+            showDialog(context: context, builder: (dialogCtx) => _buildCsvDialog(dialogCtx, title, rows));
+          }
+        } else if (action == 'download') {
+          await FileSaver.instance.saveAs(
+            name: filename,
+            bytes: response.bodyBytes,
+            ext: 'csv',
+            mimeType: MimeType.csv,
           );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('✅ $title download started!'), backgroundColor: AppTheme.success),
+            );
+          }
+        } else if (action == 'share') {
+          final dir = await getTemporaryDirectory();
+          final file = File('${dir.path}/$filename.csv');
+          await file.writeAsBytes(response.bodyBytes);
+          await Share.shareXFiles([XFile(file.path)], text: 'DravYantra $title');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('✅ $title ready to share!'), backgroundColor: AppTheme.success),
+            );
+          }
         }
       } else {
         throw Exception('Server returned ${response.statusCode}');
@@ -113,16 +132,43 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Failed to download: $e'),
+            content: Text('❌ Failed: $e'),
             backgroundColor: AppTheme.danger,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
     } finally {
       if (mounted) setState(() => _downloadingReports.remove(type));
     }
+  }
+
+  Widget _buildCsvDialog(BuildContext dialogCtx, String title, List<List<dynamic>> rows) {
+    if (rows.isEmpty) return AlertDialog(title: Text(title), content: const Text('No data.'));
+    final headers = rows.first.map((e) => e.toString()).toList();
+    final dataRows = rows.skip(1).toList();
+
+    return AlertDialog(
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            child: DataTable(
+              headingRowColor: MaterialStateProperty.all(AppTheme.primaryBlue.withOpacity(0.1)),
+              columns: headers.map((h) => DataColumn(label: Text(h, style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
+              rows: dataRows.map((r) => DataRow(
+                cells: r.map((c) => DataCell(Text(c.toString()))).toList(),
+              )).toList(),
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Close')),
+      ],
+    );
   }
 
   Future<void> _deleteSchedule(int id) async {
@@ -419,12 +465,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 const SizedBox(width: 12),
                 isDownloading
                     ? const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2))
-                    : IconButton(
-                        icon: const Icon(LucideIcons.download, size: 20, color: AppTheme.primaryBlue),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryBlue.withOpacity(0.05),
-                        ),
-                        onPressed: () => _downloadReport(report['title'] as String, type),
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(LucideIcons.eye, size: 20, color: AppTheme.primaryBlue),
+                            tooltip: 'View',
+                            style: IconButton.styleFrom(backgroundColor: AppTheme.primaryBlue.withOpacity(0.05)),
+                            onPressed: () => _handleReportAction(report['title'] as String, type, 'view'),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(LucideIcons.share2, size: 20, color: AppTheme.success),
+                            tooltip: 'Share',
+                            style: IconButton.styleFrom(backgroundColor: AppTheme.success.withOpacity(0.05)),
+                            onPressed: () => _handleReportAction(report['title'] as String, type, 'share'),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(LucideIcons.download, size: 20, color: AppTheme.warning),
+                            tooltip: 'Download',
+                            style: IconButton.styleFrom(backgroundColor: AppTheme.warning.withOpacity(0.05)),
+                            onPressed: () => _handleReportAction(report['title'] as String, type, 'download'),
+                          ),
+                        ],
                       ),
               ],
             ),

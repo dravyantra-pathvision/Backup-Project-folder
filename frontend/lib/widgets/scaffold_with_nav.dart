@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../models/engine.dart';
@@ -591,6 +592,8 @@ class _LogoutTile extends StatelessWidget {
         if (confirm && context.mounted) {
           await SessionManager.clearSession();
           await FirebaseAuth.instance.signOut();
+          await GoogleSignIn().signOut();
+          Provider.of<DataEngine>(context, listen: false).clearData();
           if (context.mounted) context.go('/role-selection');
         }
       },

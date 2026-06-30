@@ -80,14 +80,7 @@ class Organization {
   }
 
   bool get isComplete {
-    return name.trim().isNotEmpty &&
-        name != 'DravYantra Logistics Pvt Ltd' &&
-        gstin.trim().isNotEmpty &&
-        gstin != '27AAAAA0000A1Z5' &&
-        pan.trim().isNotEmpty &&
-        pan != 'AAAAA0000A' &&
-        contact.trim().isNotEmpty &&
-        contact != '+91 20 2740 1234';
+    return name.trim().isNotEmpty && contact.trim().isNotEmpty;
   }
 }
 
@@ -126,11 +119,7 @@ class UserAccount {
   });
 
   bool get isComplete {
-    return name.trim().isNotEmpty &&
-        name != 'Admin User' &&
-        name != 'User' &&
-        phone.trim().isNotEmpty &&
-        phone != '+91 98765 43210';
+    return name.trim().isNotEmpty && phone.trim().isNotEmpty;
   }
 
   UserAccount copyWith({
@@ -552,7 +541,7 @@ class Alert {
 
 class Vehicle {
   final String plate;
-  final String model;
+  final String? deviceId;
   final int year;
   final String type;
   final String status;
@@ -583,7 +572,7 @@ class Vehicle {
   final String? pucUrl;
 
   Vehicle({
-    required this.plate, required this.model, required this.year, required this.type, required this.status, required this.driver,
+    required this.plate, this.deviceId, required this.year, required this.type, required this.status, required this.driver,
     required this.loc, required this.speed, required this.fuel, required this.mil, required this.idle, required this.fastag,
     int? health, 
     required this.odo, required this.nextService, required this.insurance, required this.permit,
@@ -604,12 +593,12 @@ class Vehicle {
     return (105 - 5 * age).clamp(0, 100);
   }
 
-  Vehicle copyWith({String? model, String? insurance, String? puc, String? driver, String? status, int? speed, double? fuel, double? idle, int? fastag, double? lat, double? lng, List<List<double>>? route, bool? isActive, List<ServiceRecord>? serviceHistory, bool? isBlacklisted, String? imageUrl, String? rcUrl, String? insuranceUrl, String? pucUrl}) {
+  Vehicle copyWith({String? deviceId, String? insurance, String? puc, String? driver, String? status, int? speed, double? fuel, double? mil, double? idle, int? fastag, int? odo, String? lastFill, double? lat, double? lng, List<List<double>>? route, bool? isActive, List<ServiceRecord>? serviceHistory, bool? isBlacklisted, String? imageUrl, String? rcUrl, String? insuranceUrl, String? pucUrl}) {
     return Vehicle(
-      plate: plate, model: model ?? this.model, year: year, type: type, status: status ?? this.status, driver: driver ?? this.driver,
-      loc: loc, speed: speed ?? this.speed, fuel: fuel ?? this.fuel, mil: mil,
-      idle: idle ?? this.idle, fastag: fastag ?? this.fastag, health: health, odo: odo,
-      nextService: nextService, insurance: insurance ?? this.insurance, permit: permit, puc: puc ?? this.puc, lastFill: lastFill, alerts: alerts,
+      plate: plate, deviceId: deviceId ?? this.deviceId, year: year, type: type, status: status ?? this.status, driver: driver ?? this.driver,
+      loc: loc, speed: speed ?? this.speed, fuel: fuel ?? this.fuel, mil: mil ?? this.mil,
+      idle: idle ?? this.idle, fastag: fastag ?? this.fastag, health: health, odo: odo ?? this.odo,
+      nextService: nextService, insurance: insurance ?? this.insurance, permit: permit, puc: puc ?? this.puc, lastFill: lastFill ?? this.lastFill, alerts: alerts,
       lat: lat ?? this.lat, lng: lng ?? this.lng, route: route ?? this.route,
       isActive: isActive ?? this.isActive,
       serviceHistory: serviceHistory ?? this.serviceHistory,
@@ -623,7 +612,7 @@ class Vehicle {
 
   Map<String, dynamic> toMap() => {
     'plate': plate,
-    'model': model,
+    'deviceId': deviceId,
     'year': year,
     'type': type,
     'status': status,
@@ -656,7 +645,7 @@ class Vehicle {
 
   factory Vehicle.fromMap(Map<String, dynamic> map) => Vehicle(
     plate: map['plate'] ?? '',
-    model: map['model'] ?? '',
+    deviceId: map['deviceId'] ?? map['device_id'],
     year: map['year'] ?? 2024,
     type: map['type'] ?? '',
     status: map['status'] ?? '',
@@ -793,9 +782,9 @@ class FuelTrend {
 }
 
 class DataEngine extends ChangeNotifier {
-  int spend = 2468420;
-  double loss = 172000.0;
-  int savings = 114000;
+  int spend = 0;
+  double loss = 0.0;
+  int savings = 0;
   int spendLiters = 0;
   int lossLiters = 0;
   int savingsLiters = 0;
@@ -803,11 +792,11 @@ class DataEngine extends ChangeNotifier {
   int idleMinutes = 0;
   double idleHours = 0.0;
   double idleRupees = 0.0;
-  double avgMil = 4.81;
-  double idle = 18.2;
-  int health = 72;
-  int active = 28;
-  int tripsToday = 14;
+  double avgMil = 0.0;
+  double idle = 0.0;
+  int health = 0;
+  int active = 0;
+  int tripsToday = 0;
   bool hasNewAlerts = false;
 
   Vehicle? _selectedVehicle;
@@ -1092,8 +1081,8 @@ class DataEngine extends ChangeNotifier {
     if (prev != log && log.odometer > prev.odometer && log.liters > 0) {
       double kmPerL = (log.odometer - prev.odometer) / log.liters;
       // Update the vehicle's mil field
-      vehicles = vehicles.map((v) => v.plate == log.vehicle
-          ? updatedVehicle = Vehicle(plate: v.plate, model: v.model, year: v.year, type: v.type, status: v.status, driver: v.driver, loc: v.loc, speed: v.speed, fuel: v.fuel, mil: double.parse(kmPerL.toStringAsFixed(2)), idle: v.idle, fastag: v.fastag, odo: log.odometer, nextService: v.nextService, insurance: v.insurance, permit: v.permit, puc: v.puc, lastFill: log.date, alerts: v.alerts, lat: v.lat, lng: v.lng, route: v.route, isActive: v.isActive, serviceHistory: v.serviceHistory, isBlacklisted: v.isBlacklisted, health: v.health)
+      vehicles = vehicles.map<Vehicle>((v) => v.plate == log.vehicle
+          ? (updatedVehicle = v.copyWith(mil: double.parse(kmPerL.toStringAsFixed(2)), odo: log.odometer, lastFill: log.date))
           : v).toList();
     }
     
@@ -1213,6 +1202,71 @@ class DataEngine extends ChangeNotifier {
           if (!merged.any((a) => alertKey(a) == key)) {
             merged.insert(0, lp);
           }
+        }
+
+        // Synthesize compliance alerts
+        final now = DateTime.now();
+        for (final v in vehicles) {
+          void checkDoc(String docName, String dateStr) {
+            if (dateStr.isEmpty) return;
+            try {
+              DateTime? date;
+              if (dateStr.contains('/')) {
+                final parts = dateStr.split('/');
+                if (parts.length == 3) {
+                  date = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                }
+              } else {
+                date = DateTime.tryParse(dateStr);
+              }
+              if (date == null) return;
+              final diff = date.difference(now).inDays;
+              if (diff <= 60) {
+                final key = '${v.plate}|$docName Expiring|warning|compliance';
+                if (!merged.any((a) => alertKey(a) == key)) {
+                  merged.insert(0, Alert(
+                    id: 'compliance_${v.plate}_$docName',
+                    truck: v.plate,
+                    msg: '$docName expiring in $diff days',
+                    time: 'Now',
+                    sev: diff <= 15 ? 'danger' : 'warning',
+                    category: AlertCategory.compliance,
+                    status: AlertStatus.pending,
+                    driver: v.driver,
+                  ));
+                }
+              }
+            } catch (_) {}
+          }
+          checkDoc('Insurance', v.insurance);
+          checkDoc('PUC', v.puc);
+          checkDoc('Permit', v.permit);
+          checkDoc('Service Due', v.nextService);
+        }
+
+        for (final d in drivers) {
+          try {
+            final parts = d.licExp.split('/');
+            if (parts.length == 3) {
+              final date = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+              final diff = date.difference(now).inDays;
+              if (diff <= 60) {
+                final key = '${d.name}|License Expiring|warning|compliance';
+                if (!merged.any((a) => alertKey(a) == key)) {
+                  merged.insert(0, Alert(
+                    id: 'compliance_driver_${d.name}',
+                    truck: d.name,
+                    msg: 'Driving License expiring in $diff days',
+                    time: 'Now',
+                    sev: diff <= 15 ? 'danger' : 'warning',
+                    category: AlertCategory.compliance,
+                    status: AlertStatus.pending,
+                    driver: d.name,
+                  ));
+                }
+              }
+            }
+          } catch (_) {}
         }
 
         alerts = merged;
@@ -1402,12 +1456,7 @@ class DataEngine extends ChangeNotifier {
     // If persisting failed, keep the local pending alert until the next successful poll.
   }
 
-  List<FuelTrend> fuelTrend = [
-    FuelTrend(d: '01 Apr', used: 42000, loss: 3100), FuelTrend(d: '03 Apr', used: 38000, loss: 2800),
-    FuelTrend(d: '05 Apr', used: 51000, loss: 3600), FuelTrend(d: '07 Apr', used: 44000, loss: 3200),
-    FuelTrend(d: '09 Apr', used: 49000, loss: 3500), FuelTrend(d: '11 Apr', used: 37000, loss: 2700),
-    FuelTrend(d: '13 Apr', used: 53000, loss: 3800), FuelTrend(d: '15 Apr', used: 46000, loss: 3300),
-  ];
+  List<FuelTrend> fuelTrend = [];
 
   List<Trip> trips = [];
 
@@ -1470,8 +1519,36 @@ class DataEngine extends ChangeNotifier {
   AlertSettings alertSettings = AlertSettings(speedThreshold: 80, idleLimit: 15, fuelDropThreshold: 5.0, fastagThreshold: 500, whatsappEnabled: true, smsEnabled: false, pushEnabled: true, emailEnabled: true, mileageThreshold: 4.0, perTypeToggles: const {'overSpeed': true, 'excessIdle': true, 'fuelDrop': true, 'geoFence': true, 'harshBraking': true, 'eWayBill': true, 'fastag': true, 'gpsLost': true});
 
   bool isLoggedIn = true;
+  bool profileLoaded = false;
   String? backendBaseUrl; // persisted override for device testing (e.g. http://192.168.1.42:3000)
   DateTime? lastPromptedAt;
+
+  void clearData() {
+    trips = [];
+    vehicles = [];
+    drivers = [];
+    alerts = [];
+    fuelLogs = [];
+    spend = 0;
+    loss = 0.0;
+    savings = 0;
+    spendLiters = 0;
+    lossLiters = 0;
+    savingsLiters = 0;
+    idleSeconds = 0;
+    idleMinutes = 0;
+    idleHours = 0.0;
+    idleRupees = 0.0;
+    avgMil = 0.0;
+    idle = 0.0;
+    health = 0;
+    active = 0;
+    tripsToday = 0;
+    org = Organization(name: '', gstin: '', pan: '', city: '', state: '', contact: '');
+    user = UserAccount(name: '', email: '', phone: '', role: 'Fleet Manager', timezone: '');
+    profileLoaded = false;
+    notifyListeners();
+  }
 
   String get baseUrl {
     // 1) Manually set override (e.g. from ConnectionSettings screen)
@@ -1579,6 +1656,9 @@ class DataEngine extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Failed to load profile and org: $e');
+    } finally {
+      profileLoaded = true;
+      notifyListeners();
     }
   }
 
@@ -1940,13 +2020,13 @@ class DataEngine extends ChangeNotifier {
       } else {
         debugPrint("Saving vehicles to CSV (Desktop)... Count: ${vehicles.length}");
         List<List<Object>> rows = vehicles.map((v) => <Object>[
-          v.plate, v.model, v.year, v.type, v.status, v.driver, v.loc, v.speed, v.fuel, v.mil, v.idle, v.fastag, v.health, v.odo, v.nextService, v.insurance, v.permit, v.puc, v.lastFill, v.lat, v.lng, v.isActive, v.isBlacklisted,
+          v.plate, v.year, v.type, v.status, v.driver, v.loc, v.speed, v.fuel, v.mil, v.idle, v.fastag, v.health, v.odo, v.nextService, v.insurance, v.permit, v.puc, v.lastFill, v.lat, v.lng, v.isActive, v.isBlacklisted,
           jsonEncode(v.alerts),
           jsonEncode(v.route),
           jsonEncode(v.serviceHistory.map((x) => x.toMap()).toList())
         ]).toList();
         
-        rows.insert(0, <Object>['plate', 'model', 'year', 'type', 'status', 'driver', 'loc', 'speed', 'fuel', 'mil', 'idle', 'fastag', 'health', 'odo', 'nextService', 'insurance', 'permit', 'puc', 'lastFill', 'lat', 'lng', 'isActive', 'isBlacklisted', 'alerts', 'route', 'serviceHistory']);
+        rows.insert(0, <Object>['plate', 'year', 'type', 'status', 'driver', 'loc', 'speed', 'fuel', 'mil', 'idle', 'fastag', 'health', 'odo', 'nextService', 'insurance', 'permit', 'puc', 'lastFill', 'lat', 'lng', 'isActive', 'isBlacklisted', 'alerts', 'route', 'serviceHistory']);
         
         List<List<String>> stringRows = rows.map((r) => r.map((e) => e.toString()).toList()).toList();
         String csv = const ListToCsvConverter().convert(stringRows);
