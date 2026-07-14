@@ -1,9 +1,10 @@
 // routes/onboardingRoutes.js
 const router = require('express').Router();
-const onboardingController = require('../controllers/onboardingController');
+const onboardingController = require('../modules/onboarding/onboarding.controller');
 const { verifyToken } = require('../middleware/authMiddleware');
 
-router.get('/', verifyToken, onboardingController.getOnboarding);
-router.post('/', verifyToken, onboardingController.saveOnboarding);
+router.get('/status', verifyToken, onboardingController.getStatus);
+router.put('/step/:stepId', verifyToken, onboardingController.updateStep);
+router.post('/submit', verifyToken, onboardingController.submitForApproval);
 
 module.exports = router;

@@ -17,7 +17,7 @@ const req = http.request(options, res => {
   res.on('data', chunk => { body += chunk; });
   res.on('end', () => {
     console.log('STATUS', res.statusCode);
-    console.log('HEADERS', res.headers);
+    console.log('Status Code:', res.status);
     console.log('BODY', body);
   });
 });

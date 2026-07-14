@@ -74,6 +74,7 @@ const updateProfile = async (uid, fields) => {
     employee_id, department, language_pref,
     email_notif, sms_notif, push_notif,
     speed_limit_override, fuel_theft_limit_override,
+    idle_duration_override, low_mileage_override,
   } = fields;
 
   const result = await pool.query(
@@ -88,7 +89,9 @@ const updateProfile = async (uid, fields) => {
        sms_notif               = COALESCE($9, sms_notif),
        push_notif              = COALESCE($10, push_notif),
        speed_limit_override    = $11,
-       fuel_theft_limit_override = $12
+       fuel_theft_limit_override = $12,
+       idle_duration_override  = $13,
+       low_mileage_override    = $14
      WHERE uid=$1
      RETURNING *`,
     [uid, full_name, phone, timezone,
@@ -96,6 +99,8 @@ const updateProfile = async (uid, fields) => {
      email_notif, sms_notif, push_notif,
      speed_limit_override !== undefined ? speed_limit_override : null,
      fuel_theft_limit_override !== undefined ? fuel_theft_limit_override : null,
+     idle_duration_override !== undefined ? idle_duration_override : null,
+     low_mileage_override !== undefined ? low_mileage_override : null,
     ]
   );
   return result.rows[0];
@@ -103,30 +108,34 @@ const updateProfile = async (uid, fields) => {
 
 const updateOrganization = async (uid, fields) => {
   const {
-    company_name, gstin, pan, contact_number,
-    city, state, address, pincode, country,
+    company_name, gstin, pan, contact_number, contact_email,
+    city, state, address, country,
     fleet_size, industry_type,
   } = fields;
 
-  const result = await pool.query(
-    `INSERT INTO fleet_onboarding
-       (uid, company_name, gstin, pan, contact_number, city, state, address, pincode, country, fleet_size, industry_type)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-     ON CONFLICT (uid) DO UPDATE SET
+  const query = `
+      INSERT INTO fleet_onboarding 
+       (uid, company_name, gstin, pan, contact_number, contact_email, city, state, address, country, fleet_size, industry_type)
+      VALUES 
+       ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (uid) DO UPDATE SET
        company_name    = COALESCE(EXCLUDED.company_name,  fleet_onboarding.company_name),
        gstin           = COALESCE(EXCLUDED.gstin,         fleet_onboarding.gstin),
        pan             = COALESCE(EXCLUDED.pan,           fleet_onboarding.pan),
        contact_number  = COALESCE(EXCLUDED.contact_number,fleet_onboarding.contact_number),
+       contact_email   = COALESCE(EXCLUDED.contact_email, fleet_onboarding.contact_email),
        city            = COALESCE(EXCLUDED.city,          fleet_onboarding.city),
        state           = COALESCE(EXCLUDED.state,         fleet_onboarding.state),
        address         = COALESCE(EXCLUDED.address,       fleet_onboarding.address),
-       pincode         = COALESCE(EXCLUDED.pincode,       fleet_onboarding.pincode),
        country         = COALESCE(EXCLUDED.country,       fleet_onboarding.country),
        fleet_size      = COALESCE(EXCLUDED.fleet_size,    fleet_onboarding.fleet_size),
        industry_type   = COALESCE(EXCLUDED.industry_type, fleet_onboarding.industry_type)
-     RETURNING *`,
-    [uid, company_name, gstin, pan, contact_number, city, state, address, pincode, country, fleet_size, industry_type]
-  );
+      RETURNING *;
+    `;
+    const values = [
+      uid, company_name, gstin, pan, contact_number, contact_email, city, state, address, country, fleet_size, industry_type
+    ];
+  const result = await pool.query(query, values);
   return result.rows[0];
 };
 

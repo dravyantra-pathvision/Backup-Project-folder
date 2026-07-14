@@ -194,7 +194,7 @@
         
         <div class="content">
             <div class="status success" id="status">
-                ✓ Backend API is running on <strong>http://localhost:3000</strong>
+                ✓ Backend API is running on <strong>Live Server</strong>
             </div>
             
             <div class="grid">
@@ -254,6 +254,27 @@
                 <div class="endpoint">
                     <span class="method post">POST</span> /api/upload - Upload file
                 </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span> /api/auth/* - Authentication
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span> /api/alerts - Alerts
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span> /api/fleet-settings - Fleet Settings
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span> /api/reports - Reports
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span> /api/telemetry - Telemetry
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span> /api/support - Support
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span> /api/admin/* - Admin Routes
+                </div>
                 <p style="color: #64748b; margin-top: 15px; font-size: 0.9em;">
                     ℹ️ Most endpoints require Firebase/Supabase authentication token in the Authorization header.
                 </p>
@@ -273,7 +294,7 @@ flutter run</pre>
             const status = document.getElementById('status');
             status.innerHTML = '<span class="loading"></span> Testing connection...';
             
-            fetch('http://localhost:3000/api/vehicles', {
+            fetch('/api/vehicles', {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'
@@ -304,7 +325,7 @@ flutter run</pre>
 
         async function loadAlerts() {
             try {
-                const res = await fetch('http://localhost:3000/api/alerts', { method: 'GET' });
+                const res = await fetch('/api/alerts', { method: 'GET' });
                 if (!res.ok) throw new Error('Failed to fetch alerts');
                 const list = await res.json();
                 const countEl = document.getElementById('alerts-count');
@@ -322,7 +343,7 @@ flutter run</pre>
             const btn = event?.target;
             try {
                 if (btn) { btn.disabled = true; btn.innerText = 'Clearing...'; }
-                const res = await fetch('http://localhost:3000/api/alerts', { method: 'DELETE' });
+                const res = await fetch('/api/alerts', { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed to clear alerts');
                 const body = await res.json();
                 // show refreshed alerts (body.alerts expected)

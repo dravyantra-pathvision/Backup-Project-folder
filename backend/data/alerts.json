@@ -1,6 +1,29 @@
 [
   {
     "status": "pending",
+    "id": "T-123:1783588774624",
+    "detectedAt": "2026-07-09T09:19:34.624Z",
+    "tripId": "T-123",
+    "vehiclePlate": "TEST-123",
+    "driver": "John",
+    "type": "rash_driving",
+    "message": "TEST-123 is driving rashly at speed 100",
+    "prevSpeed": 60,
+    "newSpeed": 100
+  },
+  {
+    "id": "ALRT-1783588727536",
+    "type": "harsh_braking",
+    "vehicle": "TRP-0001",
+    "severity": "high",
+    "timestamp": "2026-07-09T09:18:47.537Z",
+    "message": "Harsh braking detected",
+    "meta": {
+      "generatedBy": "emit_alert.js"
+    }
+  },
+  {
+    "status": "pending",
     "id": "TRP-4406:1780546868478",
     "detectedAt": "2026-06-04T04:21:08.478Z",
     "tripId": "TRP-4406",

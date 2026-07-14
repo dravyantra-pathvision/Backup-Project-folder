@@ -1,12 +1,22 @@
 // controllers/userController.js
 const userService = require('../services/userService');
 const { handleError } = require('../utils/responseHandler');
+const auditLogger = require('../utils/auditLogger');
 
 const syncUser = async (req, res) => {
   const { uid, email } = req.user;
   const { full_name, role = 'fleet_owner' } = req.body;
   try {
     const user = await userService.syncUser(uid, email, full_name, role);
+    
+    // Log fleet owner login/sync
+    auditLogger.log({
+      req,
+      module: 'Fleet Owner',
+      action: 'Fleet Owner Logged In',
+      newValue: { uid, email, full_name, role }
+    });
+
     res.json({ message: 'User synced', user });
   } catch (err) {
     handleError(res, 'Error syncing user', err);
@@ -31,6 +41,7 @@ const updateProfile = async (req, res) => {
     employee_id, department, language_pref,
     email_notif, sms_notif, push_notif,
     speed_limit_override, fuel_theft_limit_override,
+    idle_duration_override, low_mileage_override,
   } = req.body;
   try {
     await userService.syncUser(uid, email || `no-email-${uid}@example.com`, full_name || 'User', 'fleet_owner');
@@ -39,6 +50,7 @@ const updateProfile = async (req, res) => {
       employee_id, department, language_pref,
       email_notif, sms_notif, push_notif,
       speed_limit_override, fuel_theft_limit_override,
+      idle_duration_override, low_mileage_override,
     });
     res.json({ message: 'Profile updated', user });
   } catch (err) {
@@ -49,15 +61,15 @@ const updateProfile = async (req, res) => {
 const updateOrganization = async (req, res) => {
   const { uid, email } = req.user;
   const {
-    company_name, gstin, pan, contact_number,
-    city, state, address, pincode, country,
+    company_name, gstin, pan, contact_number, contact_email,
+    city, state, address, country,
     fleet_size, industry_type,
   } = req.body;
   try {
     await userService.syncUser(uid, email || `no-email-${uid}@example.com`, 'User', 'fleet_owner');
     const org = await userService.updateOrganization(uid, {
-      company_name, gstin, pan, contact_number,
-      city, state, address, pincode,
+      company_name, gstin, pan, contact_number, contact_email,
+      city, state, address,
       country: country || 'India', fleet_size, industry_type,
     });
     res.json({ message: 'Organization updated', org });

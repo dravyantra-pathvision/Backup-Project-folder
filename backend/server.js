@@ -22,12 +22,17 @@ const fuelRoutes = require('./routes/fuelRoutes');
 const tripRoutes = require('./routes/tripRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const alertsRoutes = require('./routes/alertsRoutes');
+const authRoutes = require('./routes/authRoutes');
 const fleetSettingsRoutes = require('./routes/fleetSettingsRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const telemetryRoutes = require('./routes/telemetryRoutes');
+const supportRoutes = require('./routes/supportRoutes');
+const adminRoutes = require('./modules/admin/admin.routes');
 const tripUpdater = require('./services/tripUpdater');
 const dbListener = require('./services/dbListener');
 const dbPoller = require('./services/dbPoller');
+const { startScheduler } = require('./jobs/reportScheduler');
+const { startComplianceScheduler } = require('./jobs/complianceChecker');
 
 const app = express();
 
@@ -39,6 +44,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
+app.use('/uploads', express.static('uploads'));
 app.use(requestLogger);
 
 // Catch JSON parse errors
@@ -50,18 +56,32 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// API Routes
+const requireApprovedOrg = require('./middleware/requireApprovedOrg');
+const { verifyToken } = require('./middleware/authMiddleware');
+
+// API Routes — Fleet Owner (Unprotected by Org Status)
 app.use('/api/users', userRoutes);
 app.use('/api/onboarding', onboardingRoutes);
-app.use('/api/vehicles', vehicleRoutes);
-app.use('/api/drivers', driverRoutes);
-app.use('/api/fuel_logs', fuelRoutes);
-app.use('/api/trips', tripRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/alerts', alertsRoutes);
-app.use('/api/fleet-settings', fleetSettingsRoutes);
-app.use('/api/reports', reportRoutes);
+
+// API Routes — Fleet Owner (Protected by Org Status)
+app.use('/api/vehicles', verifyToken, requireApprovedOrg, vehicleRoutes);
+app.use('/api/drivers', verifyToken, requireApprovedOrg, driverRoutes);
+
+// Unprotected routes
+app.use('/api/auth', authRoutes);
+
+// More Protected Routes
+app.use('/api/trips', verifyToken, requireApprovedOrg, tripRoutes);
+app.use('/api/upload', verifyToken, requireApprovedOrg, uploadRoutes);
+app.use('/api/alerts', verifyToken, requireApprovedOrg, alertsRoutes);
+app.use('/api/fuel_logs', verifyToken, requireApprovedOrg, fuelRoutes);
+app.use('/api/fleet-settings', verifyToken, requireApprovedOrg, fleetSettingsRoutes);
+app.use('/api/reports', verifyToken, requireApprovedOrg, reportRoutes);
 app.use('/api/telemetry', telemetryRoutes);
+app.use('/api/support', verifyToken, requireApprovedOrg, supportRoutes);
+
+// API Routes — Admin (admin role required — enforced inside module)
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
@@ -92,6 +112,8 @@ const startServer = async () => {
         try { dbPoller.start(); } catch (e) { console.error('DB poller start failed:', e && e.message); }
       }
       try { dbListener.start(); } catch (e) { console.error('DB listener start failed:', e && e.message); }
+      try { startScheduler(); } catch (e) { console.error('Report scheduler start failed:', e && e.message); }
+      try { startComplianceScheduler(); } catch (e) { console.error('Compliance scheduler start failed:', e && e.message); }
     } catch (e) {
       console.error('Background services failed:', e && e.message);
     }

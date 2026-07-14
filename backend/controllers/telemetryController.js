@@ -4,7 +4,7 @@ const { getDistanceFromLatLonInKm } = require('../utils/helpers');
 const { handleError } = require('../utils/responseHandler');
 
 const ingestTelemetry = async (req, res) => {
-  const { deviceId, lat, lng, speed, power, fuel, timestamp } = req.body;
+  const { deviceId, lat, lng, speed, power, fuel, vibration, timestamp } = req.body;
 
   if (!deviceId) {
     return res.status(400).json({ error: 'deviceId is required' });
@@ -33,9 +33,10 @@ const ingestTelemetry = async (req, res) => {
       `UPDATE vehicles 
        SET lat = $1, lng = $2, speed = $3, fuel = $4, is_active = $5,
            route = CASE WHEN $3 > 0 THEN route || $6::jsonb ELSE route END,
-           loc = CASE WHEN loc IS NULL OR loc = '' THEN $7 ELSE loc END
+           loc = CASE WHEN loc IS NULL OR loc = '' THEN $7 ELSE loc END,
+           vibration = $9
        WHERE device_id = $8`,
-      [lat, lng, speed, fuel, power, JSON.stringify([[lat, lng]]), `Lat: ${lat}, Lng: ${lng}`, deviceId]
+      [lat, lng, speed, fuel, power, JSON.stringify([[lat, lng]]), `Lat: ${lat}, Lng: ${lng}`, deviceId, vibration || 0.0]
     );
 
     // 3. Check for an active trip
@@ -64,11 +65,14 @@ const ingestTelemetry = async (req, res) => {
         idleDeltaSeconds = Math.min((now - lastUpdate) / 1000, 300);
       }
 
-      // Calculate fuel delta
+      // Calculate fuel delta with basic smoothing to prevent sloshing errors
       let fuelDelta = 0;
       if (oldFuel !== null && fuel !== null && oldFuel > fuel) {
-        // Simple delta. Note: if oldFuel < fuel, it might be a refill. We ignore negative deltas for fuel_used.
-        fuelDelta = oldFuel - fuel;
+        const drop = oldFuel - fuel;
+        // Only count drops of 0.5 liters or more as actual consumption
+        if (drop >= 0.5) {
+          fuelDelta = drop;
+        }
       }
 
       await client.query(
@@ -84,6 +88,23 @@ const ingestTelemetry = async (req, res) => {
          WHERE id = $7`,
         [deltaDistance, fuelDelta, idleDeltaSeconds, speed, power, fuel, trip.id]
       );
+    }
+
+    // 4. Check for abnormal vibration (Theft / Tampering)
+    // If engine is OFF but vibration exceeds threshold (e.g. 2.5)
+    if (power === false && vibration !== undefined && vibration > 2.5) {
+      // Check if an alert was recently created to avoid spam
+      const recentAlertRes = await client.query(
+        `SELECT id FROM alerts WHERE vehicle_plate = $1 AND type = 'Vibration / Tampering' AND detected_at > NOW() - INTERVAL '1 hour'`,
+        [plate]
+      );
+      if (recentAlertRes.rows.length === 0) {
+        await client.query(
+          `INSERT INTO alerts (uid, vehicle_plate, type, message, severity, category, status)
+           VALUES ($1, $2, 'Vibration / Tampering', 'Abnormal vibration detected while engine is OFF. Possible theft or towing attempt.', 'critical', 'security', 'New')`,
+          [uid, plate]
+        );
+      }
     }
 
     await client.query('COMMIT');

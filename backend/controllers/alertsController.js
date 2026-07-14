@@ -2,6 +2,7 @@
 // Fully PostgreSQL-backed: create, read, acknowledge, dismiss, clear alerts
 const { pool } = require('../config/dbconfig');
 const { handleError } = require('../utils/responseHandler');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 const getAlerts = async (req, res) => {
   const uid = req.user?.uid || 'default_user';
@@ -68,7 +69,15 @@ const createAlert = async (req, res) => {
     } catch (pushErr) {
       console.error('[Notification Engine] Failed to dispatch alert:', pushErr);
     }
-    
+    // Audit Log
+    await logAuditEvent({
+      userUid: uid,
+      orgUid: uid,
+      module: 'Alerts',
+      action: 'Generated',
+      newValue: mapAlertRow(result.rows[0])
+    }, req);
+
     res.status(201).json(mapAlertRow(result.rows[0]));
   } catch (err) {
     handleError(res, 'Error creating alert', err);
@@ -85,6 +94,15 @@ const acknowledgeAlert = async (req, res) => {
       [id, uid]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Alert not found' });
+    
+    await logAuditEvent({
+      userUid: uid,
+      orgUid: uid,
+      module: 'Alerts',
+      action: 'Acknowledged',
+      newValue: { id }
+    }, req);
+
     res.json(mapAlertRow(result.rows[0]));
   } catch (err) {
     handleError(res, 'Error acknowledging alert', err);
@@ -101,6 +119,15 @@ const dismissAlert = async (req, res) => {
       [id, uid]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Alert not found' });
+    
+    await logAuditEvent({
+      userUid: uid,
+      orgUid: uid,
+      module: 'Alerts',
+      action: 'Dismissed',
+      newValue: { id }
+    }, req);
+
     res.json(mapAlertRow(result.rows[0]));
   } catch (err) {
     handleError(res, 'Error dismissing alert', err);
@@ -115,6 +142,13 @@ const acknowledgeAllAlerts = async (req, res) => {
        WHERE uid=$1 AND status = 'pending'`,
       [uid]
     );
+    await logAuditEvent({
+      userUid: uid,
+      orgUid: uid,
+      module: 'Alerts',
+      action: 'Acknowledged All',
+      newValue: {}
+    }, req);
     res.json({ ok: true });
   } catch (err) {
     handleError(res, 'Error acknowledging all alerts', err);
@@ -129,6 +163,13 @@ const clearAlerts = async (req, res) => {
        WHERE uid=$1 AND status != 'dismissed'`,
       [uid]
     );
+    await logAuditEvent({
+      userUid: uid,
+      orgUid: uid,
+      module: 'Alerts',
+      action: 'Cleared All',
+      newValue: {}
+    }, req);
     res.json({ ok: true, alerts: [] });
   } catch (err) {
     handleError(res, 'Error clearing alerts', err);

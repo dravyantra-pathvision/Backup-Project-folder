@@ -33,6 +33,8 @@ const initDB = async () => {
         timezone VARCHAR(50),
         speed_limit_override INTEGER,
         fuel_theft_limit_override DOUBLE PRECISION,
+        idle_duration_override INTEGER,
+        low_mileage_override DOUBLE PRECISION,
         employee_id VARCHAR(100),
         department VARCHAR(100),
         language_pref VARCHAR(50) DEFAULT 'English',
@@ -53,10 +55,10 @@ const initDB = async () => {
         gstin VARCHAR(50),
         pan VARCHAR(50),
         contact_number VARCHAR(50),
+        contact_email VARCHAR(255),
         city VARCHAR(100),
         state VARCHAR(100),
         address TEXT,
-        pincode VARCHAR(20),
         country VARCHAR(100) DEFAULT 'India',
         fleet_size VARCHAR(50),
         industry_type VARCHAR(100),
@@ -99,6 +101,7 @@ const initDB = async () => {
         rc_url TEXT,
         insurance_url TEXT,
         puc_url TEXT,
+        vibration DOUBLE PRECISION DEFAULT 0.0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -227,6 +230,88 @@ const initDB = async () => {
       );
     `);
 
+    // ── REPORT SCHEDULES ────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS report_schedules (
+        id SERIAL PRIMARY KEY,
+        uid VARCHAR(128) REFERENCES users(uid) ON DELETE CASCADE,
+        report_type VARCHAR(100) NOT NULL,
+        frequency VARCHAR(50) NOT NULL,
+        channel VARCHAR(50) NOT NULL,
+        recipient VARCHAR(255),
+        is_active BOOLEAN DEFAULT TRUE,
+        last_sent_at TIMESTAMP,
+        next_send_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ── DEVICES (IoT Management) ────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS devices (
+        device_id VARCHAR(255) PRIMARY KEY,
+        serial_number VARCHAR(255),
+        qr_code TEXT,
+        firmware_version VARCHAR(255),
+        hardware_version VARCHAR(255),
+        device_type VARCHAR(255),
+        manufacturer VARCHAR(255),
+        mac_address VARCHAR(255),
+        imei VARCHAR(255),
+        sim_number VARCHAR(255),
+        gps_module VARCHAR(255),
+        fuel_sensor VARCHAR(255),
+        accelerometer BOOLEAN DEFAULT false,
+        status VARCHAR(50) DEFAULT 'Available',
+        assigned_vehicle VARCHAR(50) REFERENCES vehicles(plate) ON DELETE SET NULL,
+        assigned_organization VARCHAR(128) REFERENCES users(uid) ON DELETE SET NULL,
+        last_heartbeat TIMESTAMP,
+        last_communication TIMESTAMP,
+        battery_level INTEGER,
+        signal_strength INTEGER,
+        gps_status VARCHAR(50),
+        created_by VARCHAR(128) REFERENCES users(uid) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ── DEVICE AUDIT LOGS ───────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS device_audit_logs (
+        id SERIAL PRIMARY KEY,
+        device_id VARCHAR(255) REFERENCES devices(device_id) ON DELETE CASCADE,
+        admin_uid VARCHAR(128) REFERENCES users(uid) ON DELETE SET NULL,
+        fleet_owner_uid VARCHAR(128) REFERENCES users(uid) ON DELETE SET NULL,
+        action VARCHAR(255) NOT NULL,
+        remarks TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_device_logs_device_id ON device_audit_logs(device_id);`);
+
+    // ── SYSTEM AUDIT LOGS ───────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS system_audit_logs (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        user_uid VARCHAR(128) REFERENCES users(uid) ON DELETE SET NULL,
+        org_uid VARCHAR(128),
+        module VARCHAR(100) NOT NULL,
+        action VARCHAR(100) NOT NULL,
+        old_value JSONB,
+        new_value JSONB,
+        ip_address VARCHAR(45),
+        browser TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sys_audit_user ON system_audit_logs(user_uid);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sys_audit_org ON system_audit_logs(org_uid);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sys_audit_module ON system_audit_logs(module);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sys_audit_ts ON system_audit_logs(timestamp);`);
+
     // ── ALERTS ──────────────────────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS alerts (
@@ -272,6 +357,8 @@ const initDB = async () => {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone VARCHAR(50);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS speed_limit_override INTEGER;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS fuel_theft_limit_override DOUBLE PRECISION;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS idle_duration_override INTEGER;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS low_mileage_override DOUBLE PRECISION;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id VARCHAR(100);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(100);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS language_pref VARCHAR(50) DEFAULT 'English';`);
@@ -283,7 +370,6 @@ const initDB = async () => {
     // fleet_onboarding
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS pan VARCHAR(50);`);
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS address TEXT;`);
-    await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS pincode VARCHAR(20);`);
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'India';`);
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS fleet_size VARCHAR(50);`);
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS industry_type VARCHAR(100);`);
@@ -293,6 +379,19 @@ const initDB = async () => {
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_url TEXT;`);
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS puc_url TEXT;`);
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS device_id VARCHAR(100);`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS make VARCHAR(255);`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS model VARCHAR(255);`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS fuel_type VARCHAR(50);`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS fuel_capacity DOUBLE PRECISION;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS vibration DOUBLE PRECISION DEFAULT 0.0;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS vin VARCHAR(100);`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS engine_number VARCHAR(100);`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS chassis_number VARCHAR(100);`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rc_expiry DATE;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_expiry DATE;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS puc_expiry DATE;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS fitness_expiry DATE;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
 
     // trips
     await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_completed BOOLEAN DEFAULT FALSE;`);
@@ -335,13 +434,27 @@ const initDB = async () => {
       CREATE OR REPLACE FUNCTION compute_trip_metrics()
       RETURNS trigger AS $$
       DECLARE
-        baseline_mileage CONSTANT DOUBLE PRECISION := 3.5;
+        baseline_mileage DOUBLE PRECISION;
+        idle_threshold INTEGER;
         baseline_fuel DOUBLE PRECISION;
         actual_fuel DOUBLE PRECISION;
         fprice DOUBLE PRECISION;
         mileage_fuel_wasted DOUBLE PRECISION;
         idle_fuel_wasted DOUBLE PRECISION;
       BEGIN
+        -- Dynamically fetch baseline_mileage and idle_threshold applying user overrides
+        SELECT 
+          COALESCE(u.low_mileage_override, fs.mileage_threshold, 3.5),
+          COALESCE(u.idle_duration_override, fs.idle_limit, 15)
+        INTO baseline_mileage, idle_threshold
+        FROM users u 
+        LEFT JOIN fleet_settings fs ON u.uid = fs.uid 
+        WHERE u.uid = NEW.uid;
+
+        -- Fallbacks in case the user row doesn't exist
+        IF baseline_mileage IS NULL THEN baseline_mileage := 3.5; END IF;
+        IF idle_threshold IS NULL THEN idle_threshold := 15; END IF;
+
         NEW.current_mileage := CASE
           WHEN COALESCE(NEW.live_speed, 0) >= 40 AND NEW.live_speed < 60 THEN 4.38
           WHEN COALESCE(NEW.live_speed, 0) < 70 THEN 3.5
@@ -415,6 +528,344 @@ const initDB = async () => {
       VALUES ('default_user', 'default@example.com', 'Default User', 'fleet_owner')
       ON CONFLICT (uid) DO NOTHING;
     `);
+
+    // ── ALERT MIGRATIONS: extend alerts table ───────────────────────────────
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS device_id VARCHAR(100);`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS admin_notes TEXT;`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'Medium';`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(128);`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'telemetry';`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS telemetry_snapshot JSONB DEFAULT '{}';`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS notified_fleet_owner BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+
+    // Migrate old 'pending' status to 'New'
+    await client.query(`UPDATE alerts SET status = 'New' WHERE status = 'pending';`);
+
+    // ── ALERT AUDIT LOG ──────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS alert_audit_log (
+        id SERIAL PRIMARY KEY,
+        alert_id INTEGER REFERENCES alerts(id) ON DELETE CASCADE,
+        admin_uid VARCHAR(128),
+        action VARCHAR(100) NOT NULL,
+        details TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_alert_audit_alert_id ON alert_audit_log(alert_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(type);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_alerts_detected_at ON alerts(detected_at);`);
+
+    // ── SEED DEFAULT DEVICES ──────────────────────────────────────────────────
+    const deviceCountRes = await client.query('SELECT COUNT(*) FROM devices');
+    if (parseInt(deviceCountRes.rows[0].count, 10) === 0) {
+      console.log('Seeding default devices...');
+      const seedDevices = [
+        ['123', 'SN1234567890', 'v1.0.0', 'v1.0.0', 'GPS Tracker', 'Teltonika', '00:1A:2B:3C:4D:5E', '861000000000001', '+919999999991', 'GPS-MT-01', 'FuelSens-A', true, 'Assigned', 'KA 12 D 1236', '7dLwA1Lvf3RuL81l8aS6X3BSqH63'],
+        ['ffcch', 'SN1234567891', 'v1.0.0', 'v1.0.0', 'GPS Tracker', 'Teltonika', '00:1A:2B:3C:4D:5F', '861000000000002', '+919999999992', 'GPS-MT-01', 'FuelSens-A', true, 'Assigned', 'KA 33 W 1234', 'MFtOK0bjikd4s1YPq8Ok9dnXTsI2'],
+        ['DEV-001', 'SN0000000001', 'v1.0.0', 'v1.0.0', 'GPS Tracker', 'CalAmp', '00:1A:2B:3C:4D:60', '861000000000003', '+919999999993', 'GPS-MT-02', 'FuelSens-B', true, 'Available', null, null],
+        ['DEV-002', 'SN0000000002', 'v1.0.0', 'v1.0.0', 'OBD Dongle', 'Queclink', '00:1A:2B:3C:4D:61', '861000000000004', '+919999999994', 'GPS-MT-03', 'FuelSens-C', false, 'Available', null, null],
+        ['DEV-003', 'SN0000000003', 'v1.0.0', 'v1.0.0', 'Asset Tracker', 'Ruptela', '00:1A:2B:3C:4D:62', '861000000000005', '+919999999995', 'GPS-MT-04', 'FuelSens-D', true, 'Available', null, null]
+      ];
+      for (const d of seedDevices) {
+        d.push(d[0]); // Add device_id as 16th element for qr_code
+        await client.query(
+          `INSERT INTO devices (
+             device_id, serial_number, firmware_version, hardware_version,
+             device_type, manufacturer, mac_address, imei, sim_number,
+             gps_module, fuel_sensor, accelerometer, status, assigned_vehicle, assigned_organization, qr_code
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+          d
+        );
+      }
+      console.log('✅ Devices seeded successfully.');
+    }
+    // ── SYSTEM SETTINGS ───────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        key VARCHAR(255) PRIMARY KEY,
+        value JSONB NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        is_sensitive BOOLEAN DEFAULT FALSE,
+        requires_super_admin BOOLEAN DEFAULT FALSE,
+        description TEXT,
+        updated_by VARCHAR(128),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS settings_history (
+        id SERIAL PRIMARY KEY,
+        setting_key VARCHAR(255) REFERENCES system_settings(key) ON DELETE CASCADE,
+        old_value JSONB,
+        new_value JSONB NOT NULL,
+        changed_by VARCHAR(128),
+        changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        change_reason TEXT
+      );
+    `);
+
+    // Seed default settings if empty
+    const settingsCount = await client.query('SELECT COUNT(*) FROM system_settings');
+    if (parseInt(settingsCount.rows[0].count, 10) === 0) {
+      console.log('Seeding default system settings...');
+      const defaultSettings = [
+        ['platform_name', '"DravYantra"', 'general', false, false, 'Name of the platform'],
+        ['logo_url', '""', 'general', false, false, 'URL for the platform logo'],
+        ['default_timezone', '"Asia/Kolkata"', 'general', false, false, 'Default timezone for new users'],
+        ['default_language', '"en"', 'general', false, false, 'Default language code'],
+        ['theme', '"dark"', 'general', false, false, 'Global UI theme (dark/light)'],
+        
+        ['smtp_host', '"smtp.gmail.com"', 'notifications', false, true, 'SMTP server host'],
+        ['smtp_port', '587', 'notifications', false, true, 'SMTP server port'],
+        ['smtp_user', '""', 'notifications', false, true, 'SMTP user email'],
+        ['smtp_password', '""', 'notifications', true, true, 'SMTP password'],
+        ['otp_length', '6', 'notifications', false, false, 'Length of generated OTPs'],
+        ['otp_expiry_minutes', '10', 'notifications', false, false, 'OTP expiration time in minutes'],
+        
+        ['jwt_expiry_hours', '24', 'security', false, true, 'JWT token expiration time in hours'],
+        ['session_timeout_minutes', '60', 'security', false, true, 'Web session timeout'],
+        ['password_min_length', '8', 'security', false, true, 'Minimum length for passwords'],
+        ['password_require_uppercase', 'true', 'security', false, true, 'Require uppercase letter in password'],
+        ['password_require_special', 'true', 'security', false, true, 'Require special character in password'],
+        ['api_rate_limit_per_minute', '100', 'security', false, true, 'API rate limit per minute per IP'],
+        
+        ['fuel_theft_threshold_pct', '5.0', 'thresholds', false, false, 'Fuel drop percentage to trigger theft alert'],
+        ['overspeed_threshold_kmh', '80', 'thresholds', false, false, 'Speed in km/h to trigger overspeed alert'],
+        ['idle_threshold_minutes', '15', 'thresholds', false, false, 'Minutes of idling to trigger alert'],
+        ['heartbeat_timeout_minutes', '10', 'thresholds', false, false, 'Minutes without heartbeat to mark device offline'],
+        
+        ['map_provider', '"openstreetmap"', 'integrations', false, false, 'Maps provider to use (openstreetmap, google)'],
+        ['cloud_storage_provider', '"local"', 'integrations', false, true, 'Storage provider (local, s3, gcs)'],
+        
+        ['maintenance_mode', 'false', 'system', false, true, 'Enable maintenance mode to block non-admin logins'],
+        ['audit_logging_enabled', 'true', 'system', false, true, 'Enable global audit logging'],
+        ['backup_enabled', 'false', 'system', false, true, 'Enable automated database backups'],
+        ['backup_schedule', '"0 2 * * *"', 'system', false, true, 'Cron schedule for database backups']
+      ];
+
+      for (const s of defaultSettings) {
+        await client.query(
+          `INSERT INTO system_settings (key, value, category, is_sensitive, requires_super_admin, description)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          s
+        );
+      }
+      console.log('✅ System settings seeded successfully.');
+    }
+
+    // ── SUPPORT & TICKETS ───────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id SERIAL PRIMARY KEY,
+        ticket_number VARCHAR(50) UNIQUE NOT NULL,
+        uid VARCHAR(128) REFERENCES users(uid) ON DELETE SET NULL,
+        category VARCHAR(50) NOT NULL,
+        priority VARCHAR(50) DEFAULT 'Medium',
+        status VARCHAR(50) DEFAULT 'Open',
+        assigned_staff_id VARCHAR(128) REFERENCES users(uid) ON DELETE SET NULL,
+        subject VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ticket_messages (
+        id SERIAL PRIMARY KEY,
+        ticket_number VARCHAR(50) REFERENCES support_tickets(ticket_number) ON DELETE CASCADE,
+        sender_id VARCHAR(128) REFERENCES users(uid) ON DELETE CASCADE,
+        message TEXT NOT NULL,
+        attachments JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ── SUBSCRIPTION PLANS ────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_plans (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        slug VARCHAR(100) NOT NULL UNIQUE,
+        description TEXT,
+        plan_type VARCHAR(50) NOT NULL DEFAULT 'paid',
+        billing_cycle VARCHAR(50) DEFAULT 'monthly',
+        price DECIMAL(12,2) DEFAULT 0.00,
+        currency VARCHAR(10) DEFAULT 'INR',
+        trial_days INTEGER DEFAULT 0,
+        max_vehicles INTEGER DEFAULT 0,
+        max_drivers INTEGER DEFAULT 0,
+        max_storage_gb DECIMAL(10,2) DEFAULT 1.00,
+        is_active BOOLEAN DEFAULT TRUE,
+        is_custom BOOLEAN DEFAULT FALSE,
+        sort_order INTEGER DEFAULT 0,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ── PLAN FEATURES ───────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS plan_features (
+        id SERIAL PRIMARY KEY,
+        plan_id INTEGER REFERENCES subscription_plans(id) ON DELETE CASCADE,
+        feature_key VARCHAR(100) NOT NULL,
+        feature_label VARCHAR(255) NOT NULL,
+        is_enabled BOOLEAN DEFAULT TRUE,
+        feature_limit VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(plan_id, feature_key)
+      );
+    `);
+
+    // ── ORGANIZATION SUBSCRIPTIONS ──────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS organization_subscriptions (
+        id SERIAL PRIMARY KEY,
+        org_uid VARCHAR(128) NOT NULL,
+        plan_id INTEGER REFERENCES subscription_plans(id) ON DELETE SET NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'trial',
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        trial_ends_at TIMESTAMP,
+        current_period_start TIMESTAMP,
+        current_period_end TIMESTAMP,
+        renewed_at TIMESTAMP,
+        cancelled_at TIMESTAMP,
+        suspended_at TIMESTAMP,
+        suspension_reason TEXT,
+        vehicles_used INTEGER DEFAULT 0,
+        drivers_used INTEGER DEFAULT 0,
+        storage_used_gb DECIMAL(10,2) DEFAULT 0.00,
+        payment_gateway VARCHAR(50),
+        gateway_subscription_id VARCHAR(255),
+        gateway_customer_id VARCHAR(255),
+        auto_renew BOOLEAN DEFAULT TRUE,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_org_sub_org_uid ON organization_subscriptions(org_uid);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_org_sub_status ON organization_subscriptions(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_org_sub_plan_id ON organization_subscriptions(plan_id);`);
+
+    // ── SUBSCRIPTION INVOICES ───────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_invoices (
+        id SERIAL PRIMARY KEY,
+        invoice_number VARCHAR(50) UNIQUE NOT NULL,
+        subscription_id INTEGER REFERENCES organization_subscriptions(id) ON DELETE SET NULL,
+        org_uid VARCHAR(128) NOT NULL,
+        plan_id INTEGER REFERENCES subscription_plans(id) ON DELETE SET NULL,
+        amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        tax_amount DECIMAL(12,2) DEFAULT 0.00,
+        discount_amount DECIMAL(12,2) DEFAULT 0.00,
+        total_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        currency VARCHAR(10) DEFAULT 'INR',
+        status VARCHAR(50) DEFAULT 'pending',
+        billing_period_start TIMESTAMP,
+        billing_period_end TIMESTAMP,
+        due_date TIMESTAMP,
+        paid_at TIMESTAMP,
+        payment_gateway VARCHAR(50),
+        gateway_order_id VARCHAR(255),
+        gateway_payment_id VARCHAR(255),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sub_inv_org ON subscription_invoices(org_uid);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sub_inv_status ON subscription_invoices(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sub_inv_sub_id ON subscription_invoices(subscription_id);`);
+
+    // ── SUBSCRIPTION PAYMENTS ───────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_payments (
+        id SERIAL PRIMARY KEY,
+        invoice_id INTEGER REFERENCES subscription_invoices(id) ON DELETE SET NULL,
+        org_uid VARCHAR(128) NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'INR',
+        payment_method VARCHAR(50),
+        payment_gateway VARCHAR(50),
+        gateway_payment_id VARCHAR(255),
+        gateway_order_id VARCHAR(255),
+        status VARCHAR(50) DEFAULT 'success',
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sub_pay_invoice ON subscription_payments(invoice_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sub_pay_org ON subscription_payments(org_uid);`);
+
+    // ── SUBSCRIPTION AUDIT LOG ──────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_audit_log (
+        id SERIAL PRIMARY KEY,
+        subscription_id INTEGER REFERENCES organization_subscriptions(id) ON DELETE CASCADE,
+        org_uid VARCHAR(128),
+        admin_uid VARCHAR(128),
+        action VARCHAR(100) NOT NULL,
+        details JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sub_audit_sub ON subscription_audit_log(subscription_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sub_audit_org ON subscription_audit_log(org_uid);`);
+
+    // ── SEED: Default Subscription Plans ────────────────────────────────────
+    const planCountRes = await client.query('SELECT COUNT(*) FROM subscription_plans');
+    if (parseInt(planCountRes.rows[0].count, 10) === 0) {
+      console.log('Seeding default subscription plans...');
+      const plans = [
+        ['Free Trial',    'free-trial',    'Full access for 14 days to evaluate the platform',                      'trial',      'none',     0,      14, 5,     5,    1.00,  true, false, 0],
+        ['Starter',       'starter',       'Essential fleet tracking for small businesses',                         'paid',       'monthly',  999,    0,  25,    25,   5.00,  true, false, 1],
+        ['Professional',  'professional',  'Advanced fleet management with analytics and reporting',                'paid',       'monthly',  2999,   0,  100,   100,  25.00, true, false, 2],
+        ['Enterprise',    'enterprise',    'Custom pricing with unlimited access, dedicated support, and SLA',      'custom',     'annual',   0,      0,  999999,999999,100.00,true, true,  3],
+      ];
+      for (const p of plans) {
+        await client.query(
+          `INSERT INTO subscription_plans (name, slug, description, plan_type, billing_cycle, price, trial_days, max_vehicles, max_drivers, max_storage_gb, is_active, is_custom, sort_order)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          p
+        );
+      }
+
+      // Seed plan features
+      const allPlans = await client.query('SELECT id, slug FROM subscription_plans ORDER BY sort_order');
+      const featureMatrix = {
+        'free-trial':    { live_tracking: true, trip_management: true, basic_alerts: true, driver_management: true, basic_reports: true, fuel_monitoring: true, advanced_analytics: false, api_access: false, custom_reports: false, priority_support: false, sla_guarantee: false, white_label: false },
+        'starter':       { live_tracking: true, trip_management: true, basic_alerts: true, driver_management: true, basic_reports: true, fuel_monitoring: true, advanced_analytics: false, api_access: false, custom_reports: false, priority_support: false, sla_guarantee: false, white_label: false },
+        'professional':  { live_tracking: true, trip_management: true, basic_alerts: true, driver_management: true, basic_reports: true, fuel_monitoring: true, advanced_analytics: true, api_access: true,  custom_reports: true,  priority_support: true,  sla_guarantee: false, white_label: false },
+        'enterprise':    { live_tracking: true, trip_management: true, basic_alerts: true, driver_management: true, basic_reports: true, fuel_monitoring: true, advanced_analytics: true, api_access: true,  custom_reports: true,  priority_support: true,  sla_guarantee: true,  white_label: true  },
+      };
+      const featureLabels = {
+        live_tracking: 'Live Vehicle Tracking', trip_management: 'Trip Management', basic_alerts: 'Basic Alerts', driver_management: 'Driver Management',
+        basic_reports: 'Basic Reports', fuel_monitoring: 'Fuel Monitoring', advanced_analytics: 'Advanced Analytics', api_access: 'API Access',
+        custom_reports: 'Custom Reports', priority_support: 'Priority Support', sla_guarantee: 'SLA Guarantee', white_label: 'White Label'
+      };
+      for (const plan of allPlans.rows) {
+        const features = featureMatrix[plan.slug];
+        if (!features) continue;
+        for (const [key, enabled] of Object.entries(features)) {
+          await client.query(
+            `INSERT INTO plan_features (plan_id, feature_key, feature_label, is_enabled)
+             VALUES ($1, $2, $3, $4) ON CONFLICT (plan_id, feature_key) DO NOTHING`,
+            [plan.id, key, featureLabels[key] || key, enabled]
+          );
+        }
+      }
+      console.log('✅ Subscription plans and features seeded successfully.');
+    }
 
     console.log('✅ Database initialized successfully');
   } catch (err) {

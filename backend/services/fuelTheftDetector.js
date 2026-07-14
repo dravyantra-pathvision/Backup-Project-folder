@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/dbconfig');
-const { readFleetSettings } = require('./fleetSettingsStore');
 const alertsStore = require('./alertsStore');
+const notificationService = require('./notificationService');
 
 const TRIPS_FILE = path.join(__dirname, '..', 'data', 'trips.json');
 
@@ -13,11 +13,7 @@ const DEFAULT_WINDOW_SECONDS = Number(process.env.FUEL_THEFT_WINDOW_SEC) || 5; /
 const RASH_SPEED_THRESHOLD = Number(process.env.RASH_SPEED_THRESHOLD_KMPH) || 80; // km/h
 const HARSH_BRAKE_THRESHOLD = Number(process.env.HARSH_BRAKE_THRESHOLD_KMPH) || 40; // drop >=40 km/h within window
 
-function getFuelTheftThresholdLiters() {
-  const settings = readFleetSettings();
-  const configured = Number(settings && settings.fuelDropThreshold);
-  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FUEL_THRESHOLD_LITERS;
-}
+// function removed in favor of DB queries
 
 async function persistFuelTheftLoss(tripId, theftFuelLoss) {
   if (!tripId) return;
@@ -59,6 +55,23 @@ async function createAlert(payload) {
     const alert = Object.assign({ id: `${payload.tripId}:${Date.now()}`, detectedAt: nowIso() }, payload);
     await alertsStore.addAlert(alert);
     console.warn('Alert created', alert.tripId, alert);
+    
+    // Fetch user contact info for notification
+      if (uid) {
+        const uResult = await pool.query('SELECT contact_email, contact_number FROM fleet_onboarding WHERE uid = $1', [uid]);
+        if (uResult.rows.length > 0) {
+          const user = uResult.rows[0];
+          await notificationService.dispatchAlert(
+            payload.type, 
+            payload.message, 
+            { email: user.contact_email, phone: user.contact_number }
+          );
+        }
+      }
+    } catch (notifErr) {
+      console.error('Failed to dispatch real-time alert', notifErr && notifErr.message);
+    }
+    
     return alert;
   } catch (e) {
     console.error('createAlert failed', e && e.message);
@@ -73,6 +86,31 @@ async function checkAndAlert(prevTrip, updatedTrip) {
     if (!updatedTrip) return;
     const id = updatedTrip.id;
     const prev = prevTrip || readLocalTripById(id) || {};
+    const plate = updatedTrip.vehiclePlate || updatedTrip.vehicle || updatedTrip.vehicle_plate || null;
+
+    // Fetch dynamic thresholds for the vehicle's owner
+    let uid = null;
+    if (plate) {
+      const vResult = await pool.query('SELECT uid FROM vehicles WHERE plate = $1', [plate]);
+      if (vResult.rows.length > 0) uid = vResult.rows[0].uid;
+    }
+
+    let speedThreshold = RASH_SPEED_THRESHOLD;
+    let fuelThreshold = DEFAULT_FUEL_THRESHOLD_LITERS;
+    if (uid) {
+      const tResult = await pool.query(`
+        SELECT
+          COALESCE(u.speed_limit_override, fs.speed_threshold, $2) as speed,
+          COALESCE(u.fuel_theft_limit_override, fs.fuel_drop_threshold, $3) as fuel
+        FROM users u 
+        LEFT JOIN fleet_settings fs ON u.uid = fs.uid 
+        WHERE u.uid = $1
+      `, [uid, RASH_SPEED_THRESHOLD, DEFAULT_FUEL_THRESHOLD_LITERS]);
+      if (tResult.rows.length > 0) {
+        speedThreshold = Number(tResult.rows[0].speed);
+        fuelThreshold = Number(tResult.rows[0].fuel);
+      }
+    }
 
     // compute time diff
     let timeDiffSec = DEFAULT_WINDOW_SECONDS + 1;
@@ -92,10 +130,11 @@ async function checkAndAlert(prevTrip, updatedTrip) {
     // 1) Rash driving: crossing above threshold — only when power is ON
     const prevSpeed = Number(prev.liveSpeed || prev.live_speed || prev.speed || 0);
     const newSpeed = Number(updatedTrip.liveSpeed || updatedTrip.live_speed || updatedTrip.speed || 0);
-    if (powerNow && (prevSpeed <= RASH_SPEED_THRESHOLD) && (newSpeed > RASH_SPEED_THRESHOLD)) {
+    if (powerNow && (prevSpeed <= speedThreshold) && (newSpeed > speedThreshold)) {
       await createAlert({
         tripId: id,
-        vehiclePlate: updatedTrip.vehiclePlate || updatedTrip.vehicle || updatedTrip.vehicle_plate || null,
+        uid: uid,
+        vehiclePlate: plate,
         driver: updatedTrip.driverName || updatedTrip.driver || updatedTrip.driver_name || null,
         type: 'rash_driving',
         message: `${updatedTrip.vehicle || updatedTrip.vehiclePlate || 'Vehicle'} is driving rashly at speed ${newSpeed}`,
@@ -109,7 +148,8 @@ async function checkAndAlert(prevTrip, updatedTrip) {
     if (powerNow && speedDrop > HARSH_BRAKE_THRESHOLD && timeDiffSec <= DEFAULT_WINDOW_SECONDS) {
       await createAlert({
         tripId: id,
-        vehiclePlate: updatedTrip.vehiclePlate || updatedTrip.vehicle || updatedTrip.vehicle_plate || null,
+        uid: uid,
+        vehiclePlate: plate,
         driver: updatedTrip.driverName || updatedTrip.driver || updatedTrip.driver_name || null,
         type: 'harsh_braking',
         message: `Harsh braking detected from ${prevSpeed} -> ${newSpeed} km/h within ${timeDiffSec}s`,
@@ -124,7 +164,7 @@ async function checkAndAlert(prevTrip, updatedTrip) {
       const prevFuel = Number(prev.liveFuelCount ?? prev.live_fuel_count ?? 0);
       const newFuel = Number(updatedTrip.liveFuelCount ?? updatedTrip.live_fuel_count ?? 0);
       const delta = prevFuel - newFuel; // positive if decreased
-      const threshold = getFuelTheftThresholdLiters();
+      const threshold = fuelThreshold;
       const storedTheft = Number(updatedTrip.theftFuelLoss ?? updatedTrip.theft_fuel_loss ?? 0);
       const desiredTheft = (prevFuel !== newFuel && delta >= threshold)
         ? Number(delta.toFixed(2))
@@ -137,7 +177,8 @@ async function checkAndAlert(prevTrip, updatedTrip) {
       if (desiredTheft > 0) {
         await createAlert({
           tripId: id,
-          vehiclePlate: updatedTrip.vehiclePlate || updatedTrip.vehicle || updatedTrip.vehicle_plate || null,
+          uid: uid,
+          vehiclePlate: plate,
           driver: updatedTrip.driverName || updatedTrip.driver || updatedTrip.driver_name || null,
           type: 'fuel_theft',
           message: `Sudden fuel drop detected (${prevFuel} -> ${newFuel} liters) — possible theft`,
@@ -154,7 +195,8 @@ async function checkAndAlert(prevTrip, updatedTrip) {
     if (powerNow && prevStatus !== 'idle' && newStatus === 'idle') {
       await createAlert({
         tripId: id,
-        vehiclePlate: updatedTrip.vehiclePlate || updatedTrip.vehicle || updatedTrip.vehicle_plate || null,
+        uid: uid,
+        vehiclePlate: plate,
         driver: updatedTrip.driverName || updatedTrip.driver || updatedTrip.driver_name || null,
         type: 'idle',
         message: `Vehicle entered idle state`,

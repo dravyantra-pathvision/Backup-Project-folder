@@ -2,6 +2,7 @@
 const tripService = require('../services/storageWrapper');
 const { mapTripRow } = require('../utils/helpers');
 const { handleError } = require('../utils/responseHandler');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 const getTrips = async (req, res) => {
   try {
@@ -37,6 +38,13 @@ const createTrip = async (req, res) => {
 
   try {
     const row = await tripService.createTrip(req.user.uid, req.body);
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Trip',
+      action: 'Created',
+      newValue: { id, ...req.body }
+    }, req);
     res.json(mapTripRow(row));
   } catch (err) {
     // Handle assignment conflicts with a 400 response
@@ -63,6 +71,23 @@ const updateTrip = async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Trip not found or unauthorized' });
     }
+    
+    // Attempt to determine if started/completed/cancelled based on req.body status
+    let action = 'Updated';
+    if (req.body.status) {
+      if (req.body.status.toLowerCase() === 'in progress') action = 'Started';
+      else if (req.body.status.toLowerCase() === 'completed') action = 'Completed';
+      else if (req.body.status.toLowerCase() === 'cancelled') action = 'Cancelled';
+    }
+
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Trip',
+      action,
+      newValue: { id, ...req.body }
+    }, req);
+
     res.json(mapTripRow(row));
   } catch (err) {
     if (err && err.code === 'STALE_UPDATE') {
@@ -79,6 +104,13 @@ const deleteTrip = async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Trip not found or unauthorized' });
     }
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Trip',
+      action: 'Deleted',
+      oldValue: { id }
+    }, req);
     res.json({ message: 'Trip deleted successfully' });
   } catch (err) {
     handleError(res, 'Error deleting trip', err);

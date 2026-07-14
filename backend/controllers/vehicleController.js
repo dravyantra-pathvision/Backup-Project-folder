@@ -1,6 +1,7 @@
 // controllers/vehicleController.js
 const vehicleService = require('../services/vehicleService');
 const { handleError } = require('../utils/responseHandler');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 const getVehicles = async (req, res) => {
   try {
@@ -20,6 +21,13 @@ const createVehicle = async (req, res) => {
 
   try {
     const row = await vehicleService.createVehicle(req.user.uid, req.body);
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid, // fleet owner is the org usually
+      module: 'Vehicle',
+      action: 'Created',
+      newValue: { plate, ...req.body }
+    }, req);
     res.json(row);
   } catch (err) {
     handleError(res, 'Error saving vehicle', err);
@@ -33,6 +41,13 @@ const updateVehicle = async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Vehicle not found or unauthorized' });
     }
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Vehicle',
+      action: 'Updated',
+      newValue: { plate, ...req.body }
+    }, req);
     res.json(row);
   } catch (err) {
     handleError(res, 'Error updating vehicle', err);
@@ -46,6 +61,13 @@ const deleteVehicle = async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Vehicle not found or unauthorized' });
     }
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Vehicle',
+      action: 'Deleted',
+      oldValue: { plate }
+    }, req);
     res.json({ message: 'Vehicle deleted successfully' });
   } catch (err) {
     handleError(res, 'Error deleting vehicle', err);

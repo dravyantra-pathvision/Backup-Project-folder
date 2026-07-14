@@ -1,6 +1,7 @@
 // controllers/driverController.js
 const driverService = require('../services/driverService');
 const { handleError } = require('../utils/responseHandler');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 const getDrivers = async (req, res) => {
   try {
@@ -29,6 +30,13 @@ const createDriver = async (req, res) => {
 
   try {
     const row = await driverService.createDriver(req.user.uid, req.body);
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Driver',
+      action: 'Created',
+      newValue: { id, ...req.body }
+    }, req);
     res.json(row);
   } catch (err) {
     handleError(res, 'Error saving driver', err);
@@ -42,6 +50,13 @@ const updateDriver = async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Driver not found or unauthorized' });
     }
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Driver',
+      action: 'Updated',
+      newValue: { id, ...req.body }
+    }, req);
     res.json(row);
   } catch (err) {
     handleError(res, 'Error updating driver', err);
@@ -55,6 +70,13 @@ const deleteDriver = async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Driver not found or unauthorized' });
     }
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.user.uid,
+      module: 'Driver',
+      action: 'Deleted',
+      oldValue: { id }
+    }, req);
     res.json({ message: 'Driver deleted successfully' });
   } catch (err) {
     handleError(res, 'Error deleting driver', err);

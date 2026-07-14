@@ -2,6 +2,7 @@
 // Replaced in-memory store with PostgreSQL-backed persistence
 const { pool } = require('../config/dbconfig');
 const { handleError } = require('../utils/responseHandler');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 const getFleetSettings = async (req, res) => {
   const uid = req.user?.uid || 'default_user';
@@ -84,7 +85,7 @@ const putFleetSettings = async (req, res) => {
       ]
     );
     const row = result.rows[0];
-    return res.json({
+    const responsePayload = {
       speedThreshold: row.speed_threshold,
       fuelDropThreshold: row.fuel_drop_threshold,
       idleLimit: row.idle_limit,
@@ -95,7 +96,17 @@ const putFleetSettings = async (req, res) => {
       pushEnabled: row.push_enabled,
       emailEnabled: row.email_enabled,
       perTypeToggles: row.per_type_toggles,
-    });
+    };
+    
+    await logAuditEvent({
+      userUid: uid,
+      orgUid: uid,
+      module: 'Fleet Settings',
+      action: 'Updated',
+      newValue: responsePayload
+    }, req);
+
+    return res.json(responsePayload);
   } catch (err) {
     handleError(res, 'Error updating fleet settings', err);
   }
