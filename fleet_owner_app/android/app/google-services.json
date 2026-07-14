@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "487303187106",
+    "firebase_url": "https://dravyantra-7d2a1-default-rtdb.firebaseio.com",
+    "project_id": "dravyantra-7d2a1",
+    "storage_bucket": "dravyantra-7d2a1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:487303187106:android:7d689b9d0199beb431a5fb",
+        "android_client_info": {
+          "package_name": "com.example.drav_yantra_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "487303187106-c05t3hgu3puj71n2nvrjro9e73igbau6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKSZImcYjSM60oQvdnZlYqtadZGLbHDKg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "487303187106-c05t3hgu3puj71n2nvrjro9e73igbau6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
