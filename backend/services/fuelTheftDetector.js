@@ -57,8 +57,9 @@ async function createAlert(payload) {
     console.warn('Alert created', alert.tripId, alert);
     
     // Fetch user contact info for notification
-      if (uid) {
-        const uResult = await pool.query('SELECT contact_email, contact_number FROM fleet_onboarding WHERE uid = $1', [uid]);
+    try {
+      if (payload.uid) {
+        const uResult = await pool.query('SELECT contact_email, contact_number FROM fleet_onboarding WHERE uid = $1', [payload.uid]);
         if (uResult.rows.length > 0) {
           const user = uResult.rows[0];
           await notificationService.dispatchAlert(

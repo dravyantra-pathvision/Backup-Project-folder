@@ -1,8 +1,9 @@
 // controllers/tripController.js
-const tripService = require('../services/storageWrapper');
-const { mapTripRow } = require('../utils/helpers');
-const { handleError } = require('../utils/responseHandler');
-const { logAuditEvent } = require('../utils/auditLogger');
+const tripService            = require('../services/storageWrapper');
+const { mapTripRow }         = require('../utils/helpers');
+const { handleError }        = require('../utils/responseHandler');
+const { logAuditEvent }      = require('../utils/auditLogger');
+const tripCompletionService  = require('../services/tripCompletionService');
 
 const getTrips = async (req, res) => {
   try {
@@ -89,6 +90,18 @@ const updateTrip = async (req, res) => {
     }, req);
 
     res.json(mapTripRow(row));
+
+    // ── Trip Completion Engine hook ─────────────────────────────────────────
+    // Trigger asynchronously so the HTTP response is not delayed.
+    const isBeingCompleted =
+      req.body.trip_completed === true ||
+      req.body.tripCompleted  === true ||
+      (req.body.status && req.body.status.toLowerCase() === 'completed');
+
+    if (isBeingCompleted) {
+      tripCompletionService.onTripCompleted(id, req.user.uid)
+        .catch(e => console.error('[tripController] completion engine error:', e && e.message));
+    }
   } catch (err) {
     if (err && err.code === 'STALE_UPDATE') {
       return res.status(409).json({ error: 'Stale update rejected: database has newer data' });
@@ -135,25 +148,41 @@ const notifyTrip = async (req, res) => {
 
 const getSummary = async (req, res) => {
   try {
-    const { from, to } = req.query;
-    const summary = await tripService.getSummary(req.user.uid, from || null, to || null);
-    const totalFuelRupees = Math.round((summary.totalFuelUsed || 0) * 100);
+    const { period, from, to } = req.query;
+
+    // If a named period is provided, convert it to from/to dates
+    let fromDate = from || null;
+    let toDate   = to   || null;
+
+    if (period && period !== 'custom') {
+      const { fleetStatsEngine } = require('../services/fleetStatsEngine');
+      const { from: pFrom, to: pTo } = require('../services/fleetStatsEngine').getPeriodDates(period);
+      if (pFrom) fromDate = pFrom.toISOString().split('T')[0];
+      if (pTo)   toDate   = pTo.toISOString().split('T')[0];
+    }
+
+    const summary = await tripService.getSummary(req.user.uid, fromDate, toDate);
+    const totalFuelRupees  = Math.round((summary.totalFuelUsed || 0) * 100);
     const totalIdleMinutes = Number(summary.totalIdleMinutes || 0);
-    // Prefer DB-stored idle rupees if available (populated by update script / migrations)
-    // Fallback formula: idle_money_wasted = total_idle_time * 1.7
-    const totalIdleRupees = Number(summary.totalIdleRupees !== undefined ? summary.totalIdleRupees : Number(((totalIdleMinutes) * 1.7).toFixed(2)));
+    const totalIdleRupees  = Number(summary.totalIdleRupees !== undefined
+      ? summary.totalIdleRupees
+      : Number(((totalIdleMinutes) * 1.7).toFixed(2)));
     const totalIdleHours = totalIdleMinutes / 60;
     res.json({
-      totalFuelLiters: Math.round(summary.totalFuelUsed || 0),
+      totalFuelLiters:       Math.round(summary.totalFuelUsed    || 0),
       totalFuelRupees,
-      totalFuelWastedLiters: Math.round(summary.totalFuelWasted || 0),
-      totalFuelSavedLiters: Math.round(summary.totalFuelSaved || 0),
-      totalMoneyWasted: Number((summary.totalMoneyWasted || 0).toFixed(2)),
-      totalMoneySaved: Number((summary.totalMoneySaved || 0).toFixed(2)),
-      totalIdleSeconds: Math.round((summary.totalIdleMinutes || 0) * 60),
-      totalIdleMinutes: Math.round(totalIdleMinutes),
-      totalIdleHours: Number(totalIdleHours.toFixed(2)),
+      totalFuelWastedLiters: Math.round(summary.totalFuelWasted  || 0),
+      totalFuelSavedLiters:  Math.round(summary.totalFuelSaved   || 0),
+      totalMoneyWasted:      Number((summary.totalMoneyWasted    || 0).toFixed(2)),
+      totalMoneySaved:       Number((summary.totalMoneySaved     || 0).toFixed(2)),
+      totalIdleSeconds:      Math.round((summary.totalIdleMinutes || 0) * 60),
+      totalIdleMinutes:      Math.round(totalIdleMinutes),
+      totalIdleHours:        Number(totalIdleHours.toFixed(2)),
       totalIdleRupees,
+      // Metadata
+      period:    period || 'all',
+      fromDate,
+      toDate,
     });
   } catch (err) {
     handleError(res, 'Error fetching trips summary', err);

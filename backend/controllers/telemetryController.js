@@ -1,122 +1,235 @@
 // controllers/telemetryController.js
-const { pool } = require('../config/dbconfig');
-const { getDistanceFromLatLonInKm } = require('../utils/helpers');
-const { handleError } = require('../utils/responseHandler');
+// Main Telemetry Ingestion Orchestrator
+// Pipeline: Validate → GPS → Fuel → Idle → Safety → Device Health → Trip Calc → Alerts
 
+'use strict';
+const { pool }                  = require('../config/dbconfig');
+const telemetryValidator        = require('../services/telemetry/telemetryValidator');
+const gpsEngine                 = require('../services/telemetry/gpsEngine');
+const fuelEngine                = require('../services/telemetry/fuelEngine');
+const idleEngine                = require('../services/telemetry/idleEngine');
+const safetyEngine              = require('../services/telemetry/safetyEngine');
+const deviceHealthEngine        = require('../services/telemetry/deviceHealthEngine');
+const tripCalculationEngine     = require('../services/tripCalculationEngine');
+const alertLifecycleService     = require('../services/alertLifecycleService');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Main handler
+// ═══════════════════════════════════════════════════════════════════════════════
 const ingestTelemetry = async (req, res) => {
-  const { deviceId, lat, lng, speed, power, fuel, vibration, timestamp } = req.body;
+  const packet = req.body;
+  const { deviceId, lat, lng, speed, power, fuel, vibration } = packet;
 
-  if (!deviceId) {
-    return res.status(400).json({ error: 'deviceId is required' });
+  // ── STEP 1: Validate packet & load context ────────────────────────────────
+  const validation = await telemetryValidator.validate(packet);
+
+  // ── STEP 2: Archive packet to telemetry_history (always) ─────────────────
+  // Even invalid packets are stored for debugging — with is_valid=false.
+  _storeTelemetryHistory(packet, validation).catch(e =>
+    console.error('[Telemetry] history store error:', e.message)
+  );
+
+  if (!validation.isValid) {
+    // Return 200 so device doesn't enter a retry storm
+    console.warn(`[Telemetry] Rejected | device=${deviceId} | reason=${validation.reason}`);
+    return res.json({ success: false, rejected: true, reason: validation.reason });
   }
 
-  const client = await pool.connect();
+  const { device, vehicle, trip, settings, uid } = validation.context;
+
+  // ── STEP 3: Update device health (always for any valid device) ────────────
+  deviceHealthEngine.update(device, packet, settings).catch(e =>
+    console.error('[Telemetry] device health error:', e.message)
+  );
+
+  // ── STEP 4: Update vehicle live data (always) ─────────────────────────────
+  _updateVehicleLive(vehicle, packet).catch(e =>
+    console.error('[Telemetry] vehicle live error:', e.message)
+  );
+
+  // ── STEP 5: If no active trip — stop here. Heartbeat/location stored. ─────
+  if (!trip) {
+    return res.json({ success: true, message: 'Telemetry stored — no active trip' });
+  }
+
+  // ── STEP 6: GPS Engine ────────────────────────────────────────────────────
+  const gpsResult = gpsEngine.calculate(vehicle, packet, settings);
+
+  // ── STEP 7: Fuel Engine ───────────────────────────────────────────────────
+  const fuelResult = await fuelEngine.process(vehicle, trip, packet, settings);
+
+  // ── STEP 8: Time delta since last trip update (capped at 60 seconds) ──────
+  const lastUpdate    = trip.updated_at ? new Date(trip.updated_at) : new Date();
+  const timeDeltaSec  = Math.min((Date.now() - lastUpdate.getTime()) / 1000, 60);
+
+  // ── STEP 9: Idle Engine ───────────────────────────────────────────────────
+  const idleResult = idleEngine.process(trip, packet, settings, timeDeltaSec);
+
+  // ── STEP 10: Safety Engine ────────────────────────────────────────────────
+  const safetyResult = safetyEngine.process(vehicle, trip, packet, settings);
+
+  // ── STEP 11: Update trip statistics atomically ────────────────────────────
   try {
-    await client.query('BEGIN');
-
-    // 1. Find the vehicle
-    const vehicleRes = await client.query('SELECT plate, uid, lat, lng, fuel FROM vehicles WHERE device_id = $1', [deviceId]);
-    if (vehicleRes.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Device not found' });
-    }
-    const vehicle = vehicleRes.rows[0];
-    const plate = vehicle.plate;
-    const uid = vehicle.uid;
-    const oldLat = vehicle.lat;
-    const oldLng = vehicle.lng;
-    const oldFuel = vehicle.fuel;
-
-    // 2. Update Vehicle telemetry
-    // We add the new point to the route array.
-    await client.query(
-      `UPDATE vehicles 
-       SET lat = $1, lng = $2, speed = $3, fuel = $4, is_active = $5,
-           route = CASE WHEN $3::numeric > 0 THEN route || $6::jsonb ELSE route END,
-           loc = CASE WHEN loc IS NULL OR loc = '' THEN $7 ELSE loc END,
-           vibration = $9
-       WHERE device_id = $8`,
-      [lat, lng, speed, fuel, power, JSON.stringify([[lat, lng]]), `Lat: ${lat}, Lng: ${lng}`, deviceId, vibration || 0.0]
-    );
-
-    // 3. Check for an active trip
-    const tripRes = await client.query(
-      `SELECT id, distance, fuel_used, total_idle_time, live_fuel_count, updated_at 
-       FROM trips 
-       WHERE vehicle = $1 AND uid = $2 AND trip_completed IS NOT TRUE 
-       LIMIT 1`,
-      [plate, uid]
-    );
-
-    if (tripRes.rows.length > 0) {
-      const trip = tripRes.rows[0];
-      
-      let deltaDistance = 0;
-      if (oldLat && oldLng && lat && lng && speed > 0) {
-        deltaDistance = getDistanceFromLatLonInKm(oldLat, oldLng, lat, lng);
-      }
-      
-      // Calculate idle delta (in seconds)
-      let idleDeltaSeconds = 0;
-      if (power === true && speed === 0) {
-        const lastUpdate = new Date(trip.updated_at).getTime();
-        const now = Date.now();
-        // Fallback max 5 minutes to prevent huge idle jumps if ping was missed
-        idleDeltaSeconds = Math.min((now - lastUpdate) / 1000, 300);
-      }
-
-      // Calculate fuel delta with basic smoothing to prevent sloshing errors
-      let fuelDelta = 0;
-      if (oldFuel !== null && fuel !== null && oldFuel > fuel) {
-        const drop = oldFuel - fuel;
-        // Only count drops of 0.5 liters or more as actual consumption
-        if (drop >= 0.5) {
-          fuelDelta = drop;
-        }
-      }
-
-      await client.query(
-        `UPDATE trips 
-         SET distance = distance + $1,
-             fuel_used = fuel_used + $2,
-             total_idle_time = total_idle_time + $3,
-             live_speed = $4,
-             power = $5,
-             live_fuel_count = $6,
-             status = CASE WHEN $5::boolean = true AND $4::numeric = 0 THEN 'idle' WHEN $5::boolean = true AND $4::numeric > 0 THEN 'running' ELSE 'halted' END,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $7`,
-        [deltaDistance, fuelDelta, idleDeltaSeconds, speed, power, fuel, trip.id]
-      );
-    }
-
-    // 4. Check for abnormal vibration (Theft / Tampering)
-    // If engine is OFF but vibration exceeds threshold (e.g. 2.5)
-    if (power === false && vibration !== undefined && vibration > 2.5) {
-      // Check if an alert was recently created to avoid spam
-      const recentAlertRes = await client.query(
-        `SELECT id FROM alerts WHERE vehicle_plate = $1 AND type = 'Vibration / Tampering' AND detected_at > NOW() - INTERVAL '1 hour'`,
-        [plate]
-      );
-      if (recentAlertRes.rows.length === 0) {
-        await client.query(
-          `INSERT INTO alerts (uid, vehicle_plate, type, message, severity, category, status)
-           VALUES ($1, $2, 'Vibration / Tampering', 'Abnormal vibration detected while engine is OFF. Possible theft or towing attempt.', 'critical', 'security', 'New')`,
-          [uid, plate]
-        );
-      }
-    }
-
-    await client.query('COMMIT');
-    res.json({ success: true, message: 'Telemetry updated successfully' });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    handleError(res, 'Error processing telemetry', err);
-  } finally {
-    client.release();
+    await tripCalculationEngine.update(trip, packet, gpsResult, fuelResult, idleResult, safetyResult, settings);
+  } catch (e) {
+    console.error('[Telemetry] Trip calc engine error:', e.message);
+    // Non-fatal path: continue with alert generation
   }
+
+  // ── STEP 12: Generate alerts ──────────────────────────────────────────────
+  _generateAlerts({ uid, vehicle, trip, fuelResult, idleResult, safetyResult, settings, packet })
+    .catch(e => console.error('[Telemetry] alert gen error:', e.message));
+
+  // ── STEP 13: Vibration / tampering check ─────────────────────────────────
+  if (power === false && vibration !== undefined && Number(vibration) > 2.5) {
+    alertLifecycleService.createAlert({
+      uid,
+      vehiclePlate: vehicle.plate,
+      tripId:       trip.id,
+      driver:       trip.driver,
+      type:         'Vibration / Tampering',
+      message:      'Abnormal vibration detected while engine is OFF. Possible theft or towing attempt.',
+      severity:     'critical',
+      category:     'security',
+      lat,
+      lng,
+    }).catch(e => console.error('[Telemetry] tampering alert error:', e.message));
+  }
+
+  res.json({ success: true });
 };
 
-module.exports = {
-  ingestTelemetry
-};
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helpers (internal, non-blocking)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function _updateVehicleLive(vehicle, packet) {
+  const { lat, lng, speed, power, fuel, vibration } = packet;
+  await pool.query(
+    `UPDATE vehicles
+       SET lat       = COALESCE($1, lat),
+           lng       = COALESCE($2, lng),
+           speed     = COALESCE($3, speed),
+           fuel      = COALESCE($4, fuel),
+           is_active = $5,
+           vibration = COALESCE($6, vibration),
+           route     = CASE WHEN $7 = TRUE AND $1 IS NOT NULL
+                            THEN route || $8::jsonb
+                            ELSE route
+                       END,
+           updated_at = NOW()
+     WHERE device_id = $9`,
+    [
+      lat, lng, speed, fuel,
+      power === true,
+      vibration || 0.0,
+      speed > 0 && lat && lng,
+      JSON.stringify([[lat, lng]]),
+      vehicle.device_id,
+    ]
+  );
+}
+
+async function _storeTelemetryHistory(packet, validation) {
+  const { deviceId, lat, lng, speed, fuel, power, vibration, heading, rpm, timestamp } = packet;
+  const ctx = validation.context;
+  await pool.query(
+    `INSERT INTO telemetry_history
+       (device_id, vehicle_plate, trip_id, uid,
+        lat, lng, speed, fuel_level, engine_on, vibration, heading, rpm,
+        heartbeat, raw_timestamp, received_at, is_valid, validation_notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),$15,$16)`,
+    [
+      deviceId,
+      ctx?.vehicle?.plate || null,
+      ctx?.trip?.id       || null,
+      ctx?.uid            || null,
+      lat   || null, lng  || null,
+      speed || null, fuel || null,
+      power !== undefined ? power : null,
+      vibration || null,
+      heading   || null,
+      rpm       || null,
+      packet.heartbeat || null,
+      timestamp ? new Date(timestamp) : null,
+      validation.isValid,
+      validation.reason || null,
+    ]
+  );
+}
+
+async function _generateAlerts({ uid, vehicle, trip, fuelResult, idleResult, safetyResult, settings, packet }) {
+  const base = { uid, vehiclePlate: vehicle.plate, tripId: trip.id, driver: trip.driver, lat: packet.lat, lng: packet.lng };
+
+  if (fuelResult.theftDetected) {
+    await alertLifecycleService.createAlert({
+      ...base,
+      type:     'fuel_theft',
+      message:  `Fuel theft detected — ${Number(fuelResult.theftAmount).toFixed(2)}L lost while engine was OFF.`,
+      severity: 'critical',
+      category: 'fuel',
+    });
+  }
+
+  if (fuelResult.refillDetected) {
+    await alertLifecycleService.createAlert({
+      ...base,
+      type:     'fuel_refill',
+      message:  `Fuel refill detected — ${Number(fuelResult.refillAmount).toFixed(2)}L added.`,
+      severity: 'info',
+      category: 'fuel',
+    });
+  }
+
+  if (idleResult.warningTriggered) {
+    await alertLifecycleService.createAlert({
+      ...base,
+      type:     'idle_warning',
+      message:  'Vehicle has been idling for over 5 minutes.',
+      severity: 'warning',
+      category: 'idle',
+    });
+  }
+
+  if (idleResult.criticalTriggered) {
+    await alertLifecycleService.createAlert({
+      ...base,
+      type:     'idle_critical',
+      message:  'Vehicle has been idling for over 15 minutes. Immediate action required.',
+      severity: 'critical',
+      category: 'idle',
+    });
+  }
+
+  if (safetyResult.overspeedEvent) {
+    await alertLifecycleService.createAlert({
+      ...base,
+      type:     'overspeed',
+      message:  `Overspeed: ${packet.speed} km/h (limit: ${settings.overspeedThresholdKmh} km/h).`,
+      severity: 'warning',
+      category: 'safety',
+    });
+  }
+
+  if (safetyResult.harshBrakingEvent) {
+    await alertLifecycleService.createAlert({
+      ...base,
+      type:     'harsh_braking',
+      message:  'Harsh braking detected.',
+      severity: 'warning',
+      category: 'safety',
+    });
+  }
+
+  if (safetyResult.rapidAccelEvent) {
+    await alertLifecycleService.createAlert({
+      ...base,
+      type:     'rapid_acceleration',
+      message:  'Rapid acceleration detected.',
+      severity: 'warning',
+      category: 'safety',
+    });
+  }
+}
+
+module.exports = { ingestTelemetry };

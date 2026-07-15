@@ -27,6 +27,8 @@ const fleetSettingsRoutes = require('./routes/fleetSettingsRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const telemetryRoutes = require('./routes/telemetryRoutes');
 const supportRoutes = require('./routes/supportRoutes');
+const fleetStatsRoutes = require('./routes/fleetStatsRoutes');
+const vehicleLifetimeRoutes = require('./routes/vehicleLifetimeRoutes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const tripUpdater = require('./services/tripUpdater');
 const dbListener = require('./services/dbListener');
@@ -79,6 +81,10 @@ app.use('/api/fleet-settings', verifyToken, requireApprovedOrg, fleetSettingsRou
 app.use('/api/reports', verifyToken, requireApprovedOrg, reportRoutes);
 app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/support', verifyToken, requireApprovedOrg, supportRoutes);
+
+// Analytics API
+app.use('/api/analytics/fleet', verifyToken, requireApprovedOrg, fleetStatsRoutes);
+app.use('/api/analytics/vehicles', verifyToken, requireApprovedOrg, vehicleLifetimeRoutes);
 
 // API Routes — Admin (admin role required — enforced inside module)
 app.use('/api/admin', adminRoutes);

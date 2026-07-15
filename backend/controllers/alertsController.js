@@ -1,8 +1,10 @@
 // controllers/alertsController.js
 // Fully PostgreSQL-backed: create, read, acknowledge, dismiss, clear alerts
+// + Full lifecycle: generated → seen → acknowledged → resolved / ignored
 const { pool } = require('../config/dbconfig');
 const { handleError } = require('../utils/responseHandler');
 const { logAuditEvent } = require('../utils/auditLogger');
+const alertLifecycleService = require('../services/alertLifecycleService');
 
 const getAlerts = async (req, res) => {
   const uid = req.user?.uid || 'default_user';
@@ -178,18 +180,69 @@ const clearAlerts = async (req, res) => {
 
 function mapAlertRow(row) {
   return {
-    id: String(row.id),
-    vehiclePlate: row.vehicle_plate || '',
-    driver: row.driver || '',
-    type: row.type || 'unknown',
-    message: row.message || '',
-    severity: row.severity || 'warning',
-    category: row.category || 'fuel',
-    status: row.status || 'pending',
-    detectedAt: row.detected_at,
-    acknowledgedAt: row.acknowledged_at,
-    dismissedAt: row.dismissed_at,
+    id:              String(row.id),
+    vehiclePlate:    row.vehicle_plate   || '',
+    driver:          row.driver          || '',
+    type:            row.type            || 'unknown',
+    message:         row.message         || '',
+    severity:        row.severity        || 'warning',
+    category:        row.category        || 'fuel',
+    // Legacy status (for backward compat with Flutter)
+    status:          row.status          || 'pending',
+    // Full lifecycle state (new)
+    lifecycleState:  row.lifecycle_state || 'generated',
+    detectedAt:      row.detected_at,
+    seenAt:          row.seen_at,
+    acknowledgedAt:  row.acknowledged_at,
+    resolvedAt:      row.resolved_at,
+    ignoredAt:       row.ignored_at,
+    dismissedAt:     row.dismissed_at,
+    lat:             row.lat,
+    lng:             row.lng,
+    tripId:          row.trip_id,
+    source:          row.source,
   };
 }
 
-module.exports = { getAlerts, createAlert, acknowledgeAlert, dismissAlert, clearAlerts, acknowledgeAllAlerts };
+// PUT /api/alerts/:id/seen
+const seeAlert = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
+  const { id } = req.params;
+  try {
+    const row = await alertLifecycleService.transition(id, uid, 'seen');
+    if (!row) return res.status(404).json({ error: 'Alert not found' });
+    res.json(mapAlertRow(row));
+  } catch (err) {
+    handleError(res, 'Error marking alert as seen', err);
+  }
+};
+
+// PUT /api/alerts/:id/resolve
+const resolveAlert = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
+  const { id } = req.params;
+  try {
+    const row = await alertLifecycleService.transition(id, uid, 'resolved');
+    if (!row) return res.status(404).json({ error: 'Alert not found' });
+    await logAuditEvent({ userUid: uid, orgUid: uid, module: 'Alerts', action: 'Resolved', newValue: { id } }, req);
+    res.json(mapAlertRow(row));
+  } catch (err) {
+    handleError(res, 'Error resolving alert', err);
+  }
+};
+
+// PUT /api/alerts/:id/ignore
+const ignoreAlert = async (req, res) => {
+  const uid = req.user?.uid || 'default_user';
+  const { id } = req.params;
+  try {
+    const row = await alertLifecycleService.transition(id, uid, 'ignored');
+    if (!row) return res.status(404).json({ error: 'Alert not found' });
+    res.json(mapAlertRow(row));
+  } catch (err) {
+    handleError(res, 'Error ignoring alert', err);
+  }
+};
+
+module.exports = { getAlerts, createAlert, acknowledgeAlert, dismissAlert, clearAlerts, acknowledgeAllAlerts, seeAlert, resolveAlert, ignoreAlert };
+
