@@ -32,7 +32,7 @@ const ingestTelemetry = async (req, res) => {
     await client.query(
       `UPDATE vehicles 
        SET lat = $1, lng = $2, speed = $3, fuel = $4, is_active = $5,
-           route = CASE WHEN $3 > 0 THEN route || $6::jsonb ELSE route END,
+           route = CASE WHEN $3::numeric > 0 THEN route || $6::jsonb ELSE route END,
            loc = CASE WHEN loc IS NULL OR loc = '' THEN $7 ELSE loc END,
            vibration = $9
        WHERE device_id = $8`,
@@ -83,7 +83,7 @@ const ingestTelemetry = async (req, res) => {
              live_speed = $4,
              power = $5,
              live_fuel_count = $6,
-             status = CASE WHEN $5 = true AND $4 = 0 THEN 'idle' WHEN $5 = true AND $4 > 0 THEN 'running' ELSE 'halted' END,
+             status = CASE WHEN $5::boolean = true AND $4::numeric = 0 THEN 'idle' WHEN $5::boolean = true AND $4::numeric > 0 THEN 'running' ELSE 'halted' END,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $7`,
         [deltaDistance, fuelDelta, idleDeltaSeconds, speed, power, fuel, trip.id]
