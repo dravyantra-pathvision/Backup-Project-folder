@@ -413,6 +413,21 @@ const initDB = async () => {
     await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS theft_money_loss DOUBLE PRECISION DEFAULT 0.0;`);
     await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
 
+    // fleet_settings columns
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_price_per_liter DOUBLE PRECISION DEFAULT 92.0;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS co2_factor_per_liter DOUBLE PRECISION DEFAULT 2.68;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS gps_drift_threshold_km DOUBLE PRECISION DEFAULT 0.05;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS gps_max_jump_km DOUBLE PRECISION DEFAULT 5.0;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_noise_threshold_liters DOUBLE PRECISION DEFAULT 1.5;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_refill_threshold_liters DOUBLE PRECISION DEFAULT 5.0;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_theft_threshold_liters DOUBLE PRECISION DEFAULT 3.0;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS overspeed_threshold_kmh DOUBLE PRECISION DEFAULT 80.0;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS idle_warning_seconds INTEGER DEFAULT 300;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS idle_critical_seconds INTEGER DEFAULT 600;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS harsh_brake_delta_kmh DOUBLE PRECISION DEFAULT 10.0;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS rapid_accel_delta_kmh DOUBLE PRECISION DEFAULT 10.0;`);
+    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS heartbeat_timeout_seconds INTEGER DEFAULT 60;`);
+
     // ── DB FUNCTIONS & TRIGGERS ─────────────────────────────────────────────
     await client.query(`
       CREATE OR REPLACE FUNCTION notify_trip_update() RETURNS trigger AS $$
@@ -442,6 +457,25 @@ const initDB = async () => {
         mileage_fuel_wasted DOUBLE PRECISION;
         idle_fuel_wasted DOUBLE PRECISION;
       BEGIN
+        -- If trip is not started or created, keep all metrics at 0
+        IF NEW.status = 'not started' OR NEW.status = 'created' THEN
+          NEW.distance := 0.0;
+          NEW.fuel_used := 0.0;
+          NEW.fuel_saved := 0.0;
+          NEW.fuel_wasted := 0.0;
+          NEW.money_saved := 0.0;
+          NEW.money_wasted := 0.0;
+          NEW.idle_money_wasted := 0.0;
+          NEW.total_idle_time := 0;
+          NEW.live_speed := 0.0;
+          NEW.progress := 0.0;
+          NEW.speeding_fuel_wasted := 0.0;
+          NEW.current_mileage := 0.0;
+          NEW.theft_fuel_loss := 0.0;
+          NEW.theft_money_loss := 0.0;
+          RETURN NEW;
+        END IF;
+
         -- Dynamically fetch baseline_mileage and idle_threshold applying user overrides
         SELECT 
           COALESCE(u.low_mileage_override, fs.mileage_threshold, 3.5),
@@ -485,7 +519,16 @@ const initDB = async () => {
           ELSE 0.0
         END;
 
-        fprice := GREATEST(COALESCE(NEW.fuel_price_per_liter, COALESCE(NEW.fuel_price, 100.0)), 1.0);
+        -- Fetch custom fuel price if not explicitly set on the trip
+        IF NEW.fuel_price_per_liter IS NULL OR NEW.fuel_price_per_liter = 100.0 OR NEW.fuel_price_per_liter = 0.0 THEN
+          SELECT COALESCE(fs.fuel_price_per_liter, 92.0) INTO fprice
+          FROM fleet_settings fs WHERE fs.uid = NEW.uid;
+          IF fprice IS NULL THEN fprice := 92.0; END IF;
+          NEW.fuel_price_per_liter := fprice;
+        ELSE
+          fprice := NEW.fuel_price_per_liter;
+        END IF;
+
         NEW.money_saved := CASE
           WHEN NEW.fuel_saved > 0 THEN ROUND((NEW.fuel_saved * fprice)::numeric, 2)
           ELSE 0.0
@@ -504,7 +547,9 @@ const initDB = async () => {
           ELSE 0.0
         END;
 
-        NEW.fuel_wasted := ROUND((mileage_fuel_wasted + idle_fuel_wasted)::numeric, 2);
+        NEW.theft_money_loss := ROUND((COALESCE(NEW.theft_fuel_loss, 0.0) * fprice)::numeric, 2);
+
+        NEW.fuel_wasted := ROUND((mileage_fuel_wasted + idle_fuel_wasted + COALESCE(NEW.theft_fuel_loss, 0.0))::numeric, 2);
 
         NEW.speeding_fuel_wasted := CASE
           WHEN NEW.current_mileage IS NULL OR NEW.current_mileage <= 0
@@ -622,19 +667,19 @@ const initDB = async () => {
         ['default_language', '"en"', 'general', false, false, 'Default language code'],
         ['theme', '"dark"', 'general', false, false, 'Global UI theme (dark/light)'],
         
-        ['smtp_host', '"smtp.gmail.com"', 'notifications', false, true, 'SMTP server host'],
-        ['smtp_port', '587', 'notifications', false, true, 'SMTP server port'],
-        ['smtp_user', '""', 'notifications', false, true, 'SMTP user email'],
-        ['smtp_password', '""', 'notifications', true, true, 'SMTP password'],
+        ['smtp_host', '"smtp.gmail.com"', 'notifications', false, false, 'SMTP server host'],
+        ['smtp_port', '587', 'notifications', false, false, 'SMTP server port'],
+        ['smtp_user', '""', 'notifications', false, false, 'SMTP user email'],
+        ['smtp_password', '""', 'notifications', true, false, 'SMTP password'],
         ['otp_length', '6', 'notifications', false, false, 'Length of generated OTPs'],
         ['otp_expiry_minutes', '10', 'notifications', false, false, 'OTP expiration time in minutes'],
         
-        ['jwt_expiry_hours', '24', 'security', false, true, 'JWT token expiration time in hours'],
-        ['session_timeout_minutes', '60', 'security', false, true, 'Web session timeout'],
-        ['password_min_length', '8', 'security', false, true, 'Minimum length for passwords'],
-        ['password_require_uppercase', 'true', 'security', false, true, 'Require uppercase letter in password'],
-        ['password_require_special', 'true', 'security', false, true, 'Require special character in password'],
-        ['api_rate_limit_per_minute', '100', 'security', false, true, 'API rate limit per minute per IP'],
+        ['jwt_expiry_hours', '24', 'security', false, false, 'JWT token expiration time in hours'],
+        ['session_timeout_minutes', '60', 'security', false, false, 'Web session timeout'],
+        ['password_min_length', '8', 'security', false, false, 'Minimum length for passwords'],
+        ['password_require_uppercase', 'true', 'security', false, false, 'Require uppercase letter in password'],
+        ['password_require_special', 'true', 'security', false, false, 'Require special character in password'],
+        ['api_rate_limit_per_minute', '100', 'security', false, false, 'API rate limit per minute per IP'],
         
         ['fuel_theft_threshold_pct', '5.0', 'thresholds', false, false, 'Fuel drop percentage to trigger theft alert'],
         ['overspeed_threshold_kmh', '80', 'thresholds', false, false, 'Speed in km/h to trigger overspeed alert'],
@@ -642,12 +687,12 @@ const initDB = async () => {
         ['heartbeat_timeout_minutes', '10', 'thresholds', false, false, 'Minutes without heartbeat to mark device offline'],
         
         ['map_provider', '"openstreetmap"', 'integrations', false, false, 'Maps provider to use (openstreetmap, google)'],
-        ['cloud_storage_provider', '"local"', 'integrations', false, true, 'Storage provider (local, s3, gcs)'],
+        ['cloud_storage_provider', '"local"', 'integrations', false, false, 'Storage provider (local, s3, gcs)'],
         
-        ['maintenance_mode', 'false', 'system', false, true, 'Enable maintenance mode to block non-admin logins'],
-        ['audit_logging_enabled', 'true', 'system', false, true, 'Enable global audit logging'],
-        ['backup_enabled', 'false', 'system', false, true, 'Enable automated database backups'],
-        ['backup_schedule', '"0 2 * * *"', 'system', false, true, 'Cron schedule for database backups']
+        ['maintenance_mode', 'false', 'system', false, false, 'Enable maintenance mode to block non-admin logins'],
+        ['audit_logging_enabled', 'true', 'system', false, false, 'Enable global audit logging'],
+        ['backup_enabled', 'false', 'system', false, false, 'Enable automated database backups'],
+        ['backup_schedule', '"0 2 * * *"', 'system', false, false, 'Cron schedule for database backups']
       ];
 
       for (const s of defaultSettings) {

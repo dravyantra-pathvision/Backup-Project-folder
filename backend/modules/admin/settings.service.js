@@ -54,9 +54,7 @@ const updateSetting = async (key, value, adminUid, isSuperAdmin, reason = '') =>
     throw new Error('Setting not found');
   }
 
-  if (current.requiresSuperAdmin && !isSuperAdmin) {
-    throw new Error('Super Admin privileges required to update this setting');
-  }
+  // Allow all admins to update any system setting parameter
 
   const updateQuery = `
     UPDATE system_settings

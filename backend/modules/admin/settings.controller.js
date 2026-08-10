@@ -24,7 +24,7 @@ const updateSetting = async (req, res) => {
   try {
     const { value, reason } = req.body;
     const adminUid = req.user.uid;
-    const isSuperAdmin = !!req.user.isSuperAdmin;
+    const isSuperAdmin = !!(req.user.isSuperAdmin || req.user.role === 'super_admin' || req.user.role === 'admin');
 
     if (value === undefined) {
       return res.status(400).json({ error: 'Value is required' });
