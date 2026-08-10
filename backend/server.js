@@ -45,8 +45,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type','Authorization'],
 }));
 app.use(express.json({ limit: '10mb' }));
+const path = require('path');
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
+app.use('/web', express.static(path.join(__dirname, '../dravyantra_web_page')));
+app.use('/terms', (req, res) => res.sendFile(path.join(__dirname, '../dravyantra_web_page/terms.html')));
+app.use('/privacy', (req, res) => res.sendFile(path.join(__dirname, '../dravyantra_web_page/privacy.html')));
 app.use(requestLogger);
 
 // Catch JSON parse errors
