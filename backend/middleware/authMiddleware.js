@@ -59,8 +59,19 @@ const verifyToken = async (req, res, next) => {
           role = result.rows[0].role;
         }
       }
-    } catch (dbErr) {
-      console.warn(`⚠️  DB lookup failed for email=${email}, uid=${uid}:`, dbErr.message);
+    // Check if admin session has been revoked
+    if (role === 'admin' || role === 'super_admin') {
+      try {
+        const sessCheck = await pool.query(
+          'SELECT is_active FROM admin_sessions WHERE admin_uid = $1 ORDER BY last_active_time DESC LIMIT 1',
+          [dbUid]
+        );
+        if (sessCheck.rows.length > 0 && sessCheck.rows[0].is_active === false) {
+          return res.status(401).json({ error: 'Unauthorized: Session has been revoked' });
+        }
+      } catch (sErr) {
+        // Ignore check failure on non-existent tables
+      }
     }
 
     req.user = { uid: dbUid, email, role };
