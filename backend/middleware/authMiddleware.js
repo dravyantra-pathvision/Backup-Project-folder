@@ -19,27 +19,22 @@ const verifyToken = async (req, res, next) => {
 
   const idToken = authHeader.split('Bearer ')[1];
   try {
-    // Decode Firebase ID token (signature verification skipped — see note below)
-    // NOTE: The serviceAccountKey.json is for the old 'dravyantra' project while
-    // the frontend uses 'dravyantra-7d2a1'. Full verify.idToken() will be enabled
-    // once both projects are aligned. Decoding is safe for internal use.
     const decodedToken = jwt.decode(idToken);
 
     if (!decodedToken) {
-      throw new Error('Invalid token structure: could not decode token');
+      return res.status(401).json({ error: 'Unauthorized: Could not decode token structure' });
     }
 
     const uid = decodedToken.user_id || decodedToken.sub || decodedToken.uid;
     if (!uid) {
-      throw new Error('Invalid token structure: missing user ID');
+      return res.status(401).json({ error: 'Unauthorized: Missing user ID in token' });
     }
 
     const email = decodedToken.email || null;
 
-    // Look up user from the database by email (handles Firebase project mismatch)
     let role = 'fleet_owner';
     let dbUid = uid;
-    
+
     try {
       if (email) {
         const result = await pool.query(
@@ -48,7 +43,7 @@ const verifyToken = async (req, res, next) => {
         );
         if (result.rows.length > 0) {
           if (result.rows[0].role) role = result.rows[0].role;
-          if (result.rows[0].uid) dbUid = result.rows[0].uid; // Use DB uid as source of truth
+          if (result.rows[0].uid) dbUid = result.rows[0].uid;
         }
       } else {
         const result = await pool.query(
@@ -59,23 +54,25 @@ const verifyToken = async (req, res, next) => {
           role = result.rows[0].role;
         }
       }
-    // Check if admin session has been revoked
-    if (role === 'admin' || role === 'super_admin') {
-      try {
-        const sessCheck = await pool.query(
-          'SELECT is_active FROM admin_sessions WHERE admin_uid = $1 ORDER BY last_active_time DESC LIMIT 1',
-          [dbUid]
-        );
-        if (sessCheck.rows.length > 0 && sessCheck.rows[0].is_active === false) {
-          return res.status(401).json({ error: 'Unauthorized: Session has been revoked' });
+
+      if (role === 'admin' || role === 'super_admin') {
+        try {
+          const sessCheck = await pool.query(
+            'SELECT is_active FROM admin_sessions WHERE admin_uid = $1 ORDER BY last_active_time DESC LIMIT 1',
+            [dbUid]
+          );
+          if (sessCheck.rows.length > 0 && sessCheck.rows[0].is_active === false) {
+            return res.status(401).json({ error: 'Unauthorized: Session has been revoked' });
+          }
+        } catch (sErr) {
+          // Ignore check failure
         }
-      } catch (sErr) {
-        // Ignore check failure on non-existent tables
       }
+    } catch (dbErr) {
+      console.warn('[authMiddleware] DB lookup warning:', dbErr.message);
     }
 
     req.user = { uid: dbUid, email, role };
-    console.log(`🔑 Authentication completed for role=${role}`);
     next();
   } catch (error) {
     console.error('Error parsing Firebase token:', error.message);
