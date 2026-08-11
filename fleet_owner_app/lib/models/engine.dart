@@ -542,44 +542,44 @@ class Trip {
     ewayBill: map['ewayBill'] ?? map['eway_bill'] ?? '',
     ewayBillUrl: map['ewayBillUrl'] ?? map['eway_bill_url'] ?? '',
     date: map['date'] ?? '',
-    progress: map['progress']?.toDouble() ?? 0.0,
-    distance: map['distance']?.toDouble() ?? 0.0,
-    fuelUsed: map['fuelUsed']?.toDouble() ?? map['fuel_used']?.toDouble() ?? 0.0,
-    score: map['score']?.toDouble() ?? 0.0,
-    delayMinutes: map['delayMinutes'] ?? map['delay_minutes'] ?? 0,
+    progress: (map['progress'] as num?)?.toDouble() ?? 0.0,
+    distance: (map['distance'] as num?)?.toDouble() ?? 0.0,
+    fuelUsed: (map['fuelUsed'] as num?)?.toDouble() ?? (map['fuel_used'] as num?)?.toDouble() ?? 0.0,
+    score: (map['score'] as num?)?.toDouble() ?? 0.0,
+    delayMinutes: (map['delayMinutes'] as num?)?.toInt() ?? (map['delay_minutes'] as num?)?.toInt() ?? 0,
     waypoints: List<String>.from(map['waypoints'] ?? []),
-    tollCount: map['tollCount'] ?? map['toll_count'] ?? 0,
-    liveSpeed: map['liveSpeed']?.toDouble() ?? map['live_speed']?.toDouble() ?? 0.0,
+    tollCount: (map['tollCount'] as num?)?.toInt() ?? (map['toll_count'] as num?)?.toInt() ?? 0,
+    liveSpeed: (map['liveSpeed'] as num?)?.toDouble() ?? (map['live_speed'] as num?)?.toDouble() ?? 0.0,
     power: map['power'] ?? false,
     liveIdleTime: map['liveIdleTime'] ?? map['live_idle_time'] ?? '',
-    liveFuelCount: map['liveFuelCount'] ?? map['live_fuel_count'] ?? 0,
-    idleDuration: map['idleDuration'] ?? map['idle_duration'] ?? 0,
-    liveIdleSpeed: (map['liveIdleSpeed']?.toDouble() ?? map['live_idle_speed']?.toDouble() ?? 0.0),
+    liveFuelCount: (map['liveFuelCount'] as num?)?.toInt() ?? (map['live_fuel_count'] as num?)?.toInt() ?? 0,
+    idleDuration: (map['idleDuration'] as num?)?.toInt() ?? (map['idle_duration'] as num?)?.toInt() ?? 0,
+    liveIdleSpeed: ((map['liveIdleSpeed'] as num?)?.toDouble() ?? (map['live_idle_speed'] as num?)?.toDouble() ?? 0.0),
     tripCompleted: map['tripCompleted'] ?? map['trip_completed'] ?? false,
-    defaultMileage: map['defaultMileage']?.toDouble() ?? map['default_mileage']?.toDouble() ?? 4.0,
-    currentMileage: map['currentMileage']?.toDouble() ?? map['current_mileage']?.toDouble() ?? 0.0,
-    fuelSaved: map['fuelSaved']?.toDouble() ?? map['fuel_saved']?.toDouble() ?? 0.0,
-    fuelWasted: map['fuelWasted']?.toDouble() ?? map['fuel_wasted']?.toDouble() ?? 0.0,
-    moneySaved: map['moneySaved']?.toDouble() ?? map['money_saved']?.toDouble() ?? 0.0,
-    moneyWasted: map['moneyWasted']?.toDouble() ?? map['money_wasted']?.toDouble() ?? 0.0,
-    idleMoneyWasted: map['idleMoneyWasted']?.toDouble() ?? map['idle_money_wasted']?.toDouble() ?? 0.0,
-    fuelPrice: map['fuelPrice']?.toDouble() ?? map['fuel_price']?.toDouble() ?? 0.0,
-    speedingFuelLoss: map['speedingFuelLoss']?.toDouble() ??
-      map['speedingFuelWasted']?.toDouble() ??
-      map['speeding_fuel_wasted']?.toDouble() ??
+    defaultMileage: (map['defaultMileage'] as num?)?.toDouble() ?? (map['default_mileage'] as num?)?.toDouble() ?? 4.0,
+    currentMileage: (map['currentMileage'] as num?)?.toDouble() ?? (map['current_mileage'] as num?)?.toDouble() ?? 0.0,
+    fuelSaved: (map['fuelSaved'] as num?)?.toDouble() ?? (map['fuel_saved'] as num?)?.toDouble() ?? 0.0,
+    fuelWasted: (map['fuelWasted'] as num?)?.toDouble() ?? (map['fuel_wasted'] as num?)?.toDouble() ?? 0.0,
+    moneySaved: (map['moneySaved'] as num?)?.toDouble() ?? (map['money_saved'] as num?)?.toDouble() ?? 0.0,
+    moneyWasted: (map['moneyWasted'] as num?)?.toDouble() ?? (map['money_wasted'] as num?)?.toDouble() ?? 0.0,
+    idleMoneyWasted: (map['idleMoneyWasted'] as num?)?.toDouble() ?? (map['idle_money_wasted'] as num?)?.toDouble() ?? 0.0,
+    fuelPrice: (map['fuelPrice'] as num?)?.toDouble() ?? (map['fuel_price'] as num?)?.toDouble() ?? 0.0,
+    speedingFuelLoss: (map['speedingFuelLoss'] as num?)?.toDouble() ??
+      (map['speedingFuelWasted'] as num?)?.toDouble() ??
+      (map['speeding_fuel_wasted'] as num?)?.toDouble() ??
       0.0,
     speedingMoneyLoss: (() {
-      final double speedingFuel = map['speedingFuelLoss']?.toDouble() ??
-        map['speedingFuelWasted']?.toDouble() ??
-        map['speeding_fuel_wasted']?.toDouble() ??
+      final double speedingFuel = (map['speedingFuelLoss'] as num?)?.toDouble() ??
+        (map['speedingFuelWasted'] as num?)?.toDouble() ??
+        (map['speeding_fuel_wasted'] as num?)?.toDouble() ??
         0.0;
-      final double price = map['fuelPrice']?.toDouble() ?? map['fuel_price']?.toDouble() ?? 100.0;
+      final double price = (map['fuelPrice'] as num?)?.toDouble() ?? (map['fuel_price'] as num?)?.toDouble() ?? 100.0;
       return speedingFuel * (price > 0 ? price : 100.0);
     })(),
-    theftFuelLoss: map['theftFuelLoss']?.toDouble() ?? map['theft_fuel_loss']?.toDouble() ?? 0.0,
+    theftFuelLoss: (map['theftFuelLoss'] as num?)?.toDouble() ?? (map['theft_fuel_loss'] as num?)?.toDouble() ?? 0.0,
     theftMoneyLoss: (() {
-      final double tFuel = map['theftFuelLoss']?.toDouble() ?? map['theft_fuel_loss']?.toDouble() ?? 0.0;
-      final double price = map['fuelPrice']?.toDouble() ?? map['fuel_price']?.toDouble() ?? 100.0;
+      final double tFuel = (map['theftFuelLoss'] as num?)?.toDouble() ?? (map['theft_fuel_loss'] as num?)?.toDouble() ?? 0.0;
+      final double price = (map['fuelPrice'] as num?)?.toDouble() ?? (map['fuel_price'] as num?)?.toDouble() ?? 100.0;
       return tFuel * (price > 0 ? price : 100.0);
     })(),
     updatedAt: map['updatedAt'] ?? map['updated_at'] ?? map['_updatedAt'],
@@ -985,10 +985,13 @@ class DataEngine extends ChangeNotifier {
   Future<Map<String, String>> _getHeaders() async {
     final user = FirebaseAuth.instance.currentUser;
     final token = await user?.getIdToken();
-    return {
+    final headers = <String, String>{
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
     };
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 
   Future<void> addVehicle(Vehicle v) async {

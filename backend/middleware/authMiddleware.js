@@ -18,6 +18,10 @@ const verifyToken = async (req, res, next) => {
   }
 
   const idToken = authHeader.split('Bearer ')[1];
+  if (!idToken || idToken === 'null' || idToken === 'undefined' || idToken.trim() === '') {
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
+  }
+
   try {
     const decodedToken = jwt.decode(idToken);
 

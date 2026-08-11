@@ -39,6 +39,13 @@ class SessionManager {
   /// logins save a session without signing into Firebase.
   static Future<String?> getValidSession() async {
     try {
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        // No authenticated Firebase user — session invalid
+        await clearSession();
+        return null;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final loginTimeMs = prefs.getInt(_sessionKey);
       if (loginTimeMs == null) return null;
@@ -52,10 +59,7 @@ class SessionManager {
 
       // Session expired — clean up
       await clearSession();
-      final firebaseUser = FirebaseAuth.instance.currentUser;
-      if (firebaseUser != null) {
-        await FirebaseAuth.instance.signOut();
-      }
+      await FirebaseAuth.instance.signOut();
       return null;
     } catch (e) {
       debugPrint('SessionManager.getValidSession error: $e');
