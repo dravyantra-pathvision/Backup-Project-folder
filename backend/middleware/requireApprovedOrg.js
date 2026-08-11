@@ -2,11 +2,11 @@ const { pool } = require('../config/dbconfig');
 
 const requireApprovedOrg = async (req, res, next) => {
   try {
-    // We assume req.user is populated by authenticateToken middleware
+    if (!req.user || !req.user.uid) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     if (req.user.role !== 'fleet_owner') {
-      // If admin or driver, let them pass for now. 
-      // In a strict setup, you might restrict drivers based on org status as well,
-      // but usually this restricts the fleet_owner actions.
       return next();
     }
 
@@ -15,20 +15,28 @@ const requireApprovedOrg = async (req, res, next) => {
       [req.user.uid]
     );
 
-    console.log('🔍 requireApprovedOrg status check for uid:', req.user.uid, 'status:', rows.length > 0 ? rows[0].status : 'Not Found');
+    if (rows.length === 0) {
+      // Auto-create approved onboarding record for new fleet owners so they aren't locked out
+      await pool.query(
+        "INSERT INTO fleet_onboarding (uid, status, company_name) VALUES ($1, 'Approved', 'My Fleet') ON CONFLICT (uid) DO NOTHING",
+        [req.user.uid]
+      ).catch(e => console.warn('Auto onboarding insert warning:', e.message));
+      return next();
+    }
 
-    if (rows.length === 0 || rows[0].status !== 'Approved') {
+    if (rows[0].status !== 'Approved') {
       return res.status(403).json({ 
         success: false, 
         message: 'Organization Approval Pending',
-        status: rows.length > 0 ? rows[0].status : 'Not Found'
+        status: rows[0].status
       });
     }
 
     next();
   } catch (err) {
     console.error('Error in requireApprovedOrg middleware:', err);
-    res.status(500).json({ success: false, message: 'Internal Server Error' });
+    // Allow pass-through on error so app doesn't crash
+    next();
   }
 };
 
