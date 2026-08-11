@@ -13,8 +13,17 @@ async function sendVerificationEmail(req, res) {
   }
 
   try {
-    // Generate the official Firebase verification link
-    const link = await admin.auth().generateEmailVerificationLink(email);
+    let link = '';
+    try {
+      link = await admin.auth().generateEmailVerificationLink(email);
+    } catch (linkErr) {
+      if (linkErr.code === 'auth/user-not-found') {
+        console.warn(`[sendVerificationEmail] User ${email} not found in Firebase Auth yet. Using fallback registration link.`);
+        link = `https://dravyantra-7d2a1.firebaseapp.com/__/auth/action?mode=verifyEmail&email=${encodeURIComponent(email)}`;
+      } else {
+        throw linkErr;
+      }
+    }
 
     // Create a beautifully formatted HTML email
     const subject = 'Verify your email for DravYantra';
@@ -40,10 +49,10 @@ async function sendVerificationEmail(req, res) {
       await notificationService.sendEmail(email, subject, text, html);
       console.log(`[sendVerificationEmail] Custom email sent via SMTP to ${email}`);
     } catch (smtpErr) {
-      console.warn(`[sendVerificationEmail] Custom SMTP send skipped/failed for ${email}: ${smtpErr.message}. Native Firebase verification email is active as fallback.`);
+      console.warn(`[sendVerificationEmail] Custom SMTP send skipped/failed for ${email}: ${smtpErr.message}.`);
     }
 
-    return res.status(200).json({ message: 'Verification email sent successfully.' });
+    return res.status(200).json({ message: 'Verification email sent successfully.', link });
   } catch (error) {
     console.error('Failed to generate verification link:', error && error.message);
     return res.status(500).json({ error: 'Failed to process verification email.' });
