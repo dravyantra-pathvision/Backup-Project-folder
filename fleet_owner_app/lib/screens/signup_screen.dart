@@ -143,20 +143,26 @@ class _SignupScreenState extends State<SignupScreen> {
           debugPrint('Failed to sync user to PostgreSQL during signup: $e');
         }
 
-        // 4. Custom backend verification endpoint attempt
+        // 4. Custom backend verification email via SMTP
+        // Wait 2 seconds for Firebase to propagate the new user record
+        // before generating the verification link on the backend
+        await Future.delayed(const Duration(seconds: 2));
         try {
           if (mounted) {
+            final freshToken = await user.getIdToken(true); // force refresh
             final baseUrl = Provider.of<DataEngine>(context, listen: false).baseUrl;
-            await http.post(
+            final verifyResp = await http.post(
               Uri.parse('$baseUrl/api/auth/send-verification'),
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': 'Bearer $freshToken',
               },
               body: jsonEncode({'email': _email.text.trim()}),
-            ).timeout(const Duration(seconds: 10));
+            ).timeout(const Duration(seconds: 15));
+            debugPrint('Verification email response: ${verifyResp.statusCode} ${verifyResp.body}');
           }
         } catch (e) {
-          debugPrint('Custom verification notification log: $e');
+          debugPrint('Custom verification email fallback (native Firebase used instead): $e');
         }
 
         if (mounted) {
