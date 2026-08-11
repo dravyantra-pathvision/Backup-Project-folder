@@ -2193,20 +2193,41 @@ class DataEngine extends ChangeNotifier {
         
         rows.insert(0, <Object>['plate', 'year', 'type', 'status', 'driver', 'loc', 'speed', 'fuel', 'mil', 'idle', 'fastag', 'health', 'odo', 'nextService', 'insurance', 'permit', 'puc', 'lastFill', 'lat', 'lng', 'isActive', 'isBlacklisted', 'alerts', 'route', 'serviceHistory']);
         
-        List<List<String>> stringRows = rows.map((r) => r.map((e) => e.toString()).toList()).toList();
-        String csv = const ListToCsvConverter().convert(stringRows);
-        
-        final path = await _getFilePath('vehicles.csv');
-        final File file = File(path);
-        await file.writeAsString(csv);
-        debugPrint("Saved to File: $path");
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/api/trips/summary'), headers: headers);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        spend = (data['totalFuelRupees'] ?? 0).toInt();
+        loss = (data['totalMoneyWasted'] ?? 0).toDouble();
+        savings = (data['totalMoneySaved'] ?? 0).toInt();
+        spendLiters = (data['totalFuelLiters'] ?? 0).toInt();
+        lossLiters = (data['totalFuelWastedLiters'] ?? 0).toInt();
+        savingsLiters = (data['totalFuelSavedLiters'] ?? 0).toInt();
+        idleMinutes = (data['totalIdleMinutes'] ?? 0).toInt();
+        idleSeconds = idleMinutes * 60;
+        idleHours = (data['totalIdleHours'] ?? (idleMinutes / 60.0)).toDouble();
+        idleRupees = (data['totalIdleRupees'] ?? 0).toDouble();
+        notifyListeners();
+      } else {
+        debugPrint('Failed to load summary: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
-      debugPrint("Error saving vehicles: $e");
+      debugPrint('Error loading summary: $e');
+    }
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/api/analytics/fleet?period=year'), headers: headers);
+      if (response.statusCode == 200) {
+        fleetStats = FleetStats.fromMap(jsonDecode(response.body));
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error loading fleet stats: $e');
     }
   }
 
   Future<void> _loadSummary() async {
+    if (FirebaseAuth.instance.currentUser == null) return;
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/api/trips/summary'), headers: headers);
@@ -2242,6 +2263,7 @@ class DataEngine extends ChangeNotifier {
   }
 
   Future<void> _loadVehicles() async {
+    if (FirebaseAuth.instance.currentUser == null) return;
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/api/vehicles'), headers: headers);
@@ -2260,6 +2282,7 @@ class DataEngine extends ChangeNotifier {
   }
 
   Future<List<Vehicle>> fetchAvailableVehicles() async {
+    if (FirebaseAuth.instance.currentUser == null) return [];
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/api/vehicles?available=true'), headers: headers);
@@ -2278,6 +2301,7 @@ class DataEngine extends ChangeNotifier {
   }
 
   Future<void> _loadFuelLogs() async {
+    if (FirebaseAuth.instance.currentUser == null) return;
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/api/fuel_logs'), headers: headers);
@@ -2324,6 +2348,7 @@ class DataEngine extends ChangeNotifier {
   }
 
   Future<void> _loadDrivers() async {
+    if (FirebaseAuth.instance.currentUser == null) return;
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/api/drivers'), headers: headers);
@@ -2342,6 +2367,7 @@ class DataEngine extends ChangeNotifier {
   }
 
   Future<List<Driver>> fetchAvailableDrivers() async {
+    if (FirebaseAuth.instance.currentUser == null) return [];
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/api/drivers?available=true'), headers: headers);
@@ -2360,6 +2386,7 @@ class DataEngine extends ChangeNotifier {
   }
 
   Future<void> _loadTrips() async {
+    if (FirebaseAuth.instance.currentUser == null) return;
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/api/trips'), headers: headers);
