@@ -7,6 +7,10 @@ import '../core/theme.dart';
 import '../models/engine.dart';
 import '../widgets/live_ticker.dart';
 import 'trips_screen.dart';
+import 'fuel_calculation_details_screen.dart';
+import 'live_tracking_screen.dart';
+import 'compliance_details_screen.dart';
+import 'driver_profile_screen.dart';
 
 
 class DashboardScreen extends StatefulWidget {
@@ -114,7 +118,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(flex: 2, child: const _FuelEfficiencyInsights()),
+                    // Removed _FuelEfficiencyInsights
                     const SizedBox(width: 16),
                     Expanded(flex: 1, child: const _ActiveAlertsPanel()),
                   ],
@@ -122,8 +126,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               } else {
                 return Column(
                   children: [
-                    const _FuelEfficiencyInsights(),
-                    const SizedBox(height: 16),
+                    // Removed _FuelEfficiencyInsights
                     const _ActiveAlertsPanel(),
                   ],
                 );
@@ -201,9 +204,18 @@ class _KpiGrid extends StatelessWidget {
     return parts.length > 1 ? '₹$formattedInt.${parts[1]}' : '₹$formattedInt';
   }
 
-  String _moneyWithLiters(num money, int liters) {
+  String _moneyWithLiters(num money, num liters) {
     final moneyStr = _inr(money);
-    final litersStr = '${liters.toString()} L';
+    final String litersStr;
+    if (liters == 0) {
+      litersStr = '0 L';
+    } else if (liters < 1) {
+      litersStr = '${liters.toStringAsFixed(2)} L';
+    } else if (liters == liters.toInt()) {
+      litersStr = '${liters.toInt()} L';
+    } else {
+      litersStr = '${liters.toStringAsFixed(1)} L';
+    }
     return '$moneyStr / $litersStr';
   }
 
@@ -211,16 +223,17 @@ class _KpiGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
     
-    // Use summary values fetched from backend summary endpoint (exact DB values)
-    final int summaryFuelSpendRupees = engine.spend; // total fuel rupees
-    final int summaryFuelUsedLiters = engine.spendLiters; // total fuel liters
-    final double summaryMoneyWasted = engine.loss; // total money wasted
-    final int summaryFuelWastedLiters = engine.lossLiters; // total fuel wasted liters
-    final int summaryMoneySaved = engine.savings; // total money saved
-    final int summaryFuelSavedLiters = engine.savingsLiters; // total fuel saved liters
-    final int summaryFuelUsedLitersInt = summaryFuelUsedLiters;
-    final int summaryFuelWastedLitersInt = summaryFuelWastedLiters;
-    final double summaryFuelSpend = summaryFuelSpendRupees.toDouble();
+    // Calculate total spend and total fuel used across all trips
+    final double totalTripFuelUsed = engine.trips.fold(0.0, (sum, t) => sum + t.fuelUsed);
+    final double totalTripMoneyWasted = engine.trips.fold(0.0, (sum, t) => sum + t.idleMoneyWasted + t.speedingMoneyLoss + t.theftMoneyLoss);
+    final double totalTripFuelWasted = engine.trips.fold(0.0, (sum, t) => sum + t.idleFuelWasted + t.speedingFuelLoss + t.theftFuelLoss);
+
+    final double summaryFuelSpend = engine.spend > 0 ? engine.spend.toDouble() : engine.trips.fold(0.0, (sum, t) => sum + (t.fuelUsed * (t.fuelPrice > 0 ? t.fuelPrice : 92.0)));
+    final double summaryFuelUsedLiters = totalTripFuelUsed > 0 ? totalTripFuelUsed : engine.spendLiters.toDouble();
+    final double summaryMoneyWasted = totalTripMoneyWasted > 0 ? totalTripMoneyWasted : engine.loss;
+    final double summaryFuelWastedLiters = totalTripFuelWasted > 0 ? totalTripFuelWasted : engine.lossLiters.toDouble();
+    final int summaryMoneySaved = engine.savings;
+    final int summaryFuelSavedLiters = engine.savingsLiters;
 
     final totalVehicles = engine.vehicles.length;
     final assignedVehicles = engine.vehicles.where((v) => v.driver.isNotEmpty).length;
@@ -235,17 +248,17 @@ class _KpiGrid extends StatelessWidget {
       mainAxisSpacing: 12,
       childAspectRatio: MediaQuery.of(context).size.width > 1200 ? 1.5 : (MediaQuery.of(context).size.width > 600 ? 1.4 : 1.25),
       children: [
-        _buildKpiCard('Fuel Spend', _moneyWithLiters(summaryFuelSpend, summaryFuelUsedLitersInt), LucideIcons.fuel, AppTheme.primaryBlue, 'All trips', 0),
-        _buildKpiCard('Fuel Loss', _moneyWithLiters(summaryMoneyWasted, summaryFuelWastedLitersInt), LucideIcons.fuel, AppTheme.danger, 'All trips', 1),
-        _buildKpiCard('Savings Opp.', _moneyWithLiters(summaryMoneySaved, summaryFuelSavedLiters), LucideIcons.trendingUp, AppTheme.success, '', 2),
-        _buildKpiCard('Active Vehicles', '$assignedVehicles / $totalVehicles', LucideIcons.truck, AppTheme.success, '', 3),
+        _buildKpiCard('Fuel Spend', _moneyWithLiters(summaryFuelSpend, summaryFuelUsedLiters), LucideIcons.fuel, AppTheme.primaryBlue, 'All trips', 0, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FuelCalculationDetailsScreen(metric: 'Fuel Spend')))),
+        _buildKpiCard('Fuel Loss', _moneyWithLiters(summaryMoneyWasted, summaryFuelWastedLiters), LucideIcons.fuel, AppTheme.danger, 'All trips', 1, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FuelCalculationDetailsScreen(metric: 'Fuel Loss')))),
+        _buildKpiCard('Potential Savings', _moneyWithLiters(summaryMoneySaved, summaryFuelSavedLiters), LucideIcons.trendingUp, AppTheme.success, '', 2),
+        _buildKpiCard('Active Vehicles', '$assignedVehicles / $totalVehicles', LucideIcons.truck, AppTheme.success, '', 3, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveTrackingScreen()))),
         _buildKpiCard('Drivers Active', '${engine.drivers.where((d) => d.vehicle.isNotEmpty).length} / ${engine.drivers.length}', LucideIcons.user, AppTheme.primaryBlue, '', 4),
         _buildKpiCard('Ideal Vehicles', idleStr, LucideIcons.clock, AppTheme.warning, '', 5),
       ],
     );
   }
 
-  Widget _buildKpiCard(String title, String value, IconData icon, Color color, String subtitle, int index) {
+  Widget _buildKpiCard(String title, String value, IconData icon, Color color, String subtitle, int index, {VoidCallback? onTap}) {
     return TweenAnimationBuilder<double>(
       key: ValueKey(title),
       tween: Tween<double>(begin: 0.0, end: 1.0),
@@ -261,8 +274,11 @@ class _KpiGrid extends StatelessWidget {
         );
       },
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -287,6 +303,7 @@ class _KpiGrid extends StatelessWidget {
               ],
             ],
           ),
+        ),
         ),
       ),
     );
@@ -405,33 +422,7 @@ class _FuelEfficiencyInsights extends StatelessWidget {
                 }
               },
             ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.success.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.success.withOpacity(0.1)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(LucideIcons.lightbulb, color: AppTheme.success, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Actionable Insight', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary)),
-                        Text(
-                          'You can save up to ${_inr(dbTotalSavings)} this month by reducing idle time and optimizing routes.',
-                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+
             const SizedBox(height: 16),
             const Text('Flagged Anomalies', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
             const SizedBox(height: 8),
@@ -683,11 +674,11 @@ class _CompliancePanel extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                _buildCompMetric('Expired', expired.toString(), AppTheme.danger),
+                _buildCompMetric(context, 'Expired', expired.toString(), AppTheme.danger),
                 const SizedBox(width: 12),
-                _buildCompMetric('Expiring Soon', expiringSoon.toString(), AppTheme.warning),
+                _buildCompMetric(context, 'Expiring Soon', expiringSoon.toString(), AppTheme.warning),
                 const SizedBox(width: 12),
-                _buildCompMetric('Valid', valid.toString(), AppTheme.success),
+                _buildCompMetric(context, 'Valid', valid.toString(), AppTheme.success),
               ],
             ),
             const SizedBox(height: 16),
@@ -706,16 +697,23 @@ class _CompliancePanel extends StatelessWidget {
     );
   }
 
-  Widget _buildCompMetric(String label, String val, Color color) {
+  Widget _buildCompMetric(BuildContext context, String label, String val, Color color) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.1))),
-        child: Column(
-          children: [
-            Text(val, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-            Text(label, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-          ],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ComplianceDetailsScreen(initialTab: label))),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.1))),
+            child: Column(
+              children: [
+                Text(val, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+                Text(label, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -760,26 +758,36 @@ class _DriverLeaderboard extends StatelessWidget {
             ...sortedDrivers.take(3).map((d) {
               int rank = sortedDrivers.indexOf(d) + 1;
               return Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: Row(
-                  children: [
-                    Text('#$rank', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary, fontSize: 13)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.only(bottom: 4.0),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriverProfileScreen(driver: d))),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Row(
                         children: [
-                          Text(d.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                          Text(d.status == 'on_duty' ? 'On Duty' : 'Idle', style: TextStyle(fontSize: 10, color: d.status == 'on_duty' ? AppTheme.success : AppTheme.textSecondary)),
+                          Text('#$rank', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary, fontSize: 13)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(d.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text(d.status == 'on_duty' ? 'On Duty' : 'Idle', style: TextStyle(fontSize: 10, color: d.status == 'on_duty' ? AppTheme.success : AppTheme.textSecondary)),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(color: AppTheme.success.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                            child: Text('${d.score}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.success, fontSize: 12)),
+                          ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: AppTheme.success.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                      child: Text('${d.score}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.success, fontSize: 12)),
-                    ),
-                  ],
+                  ),
                 ),
               );
             }).toList(),
@@ -795,7 +803,9 @@ class _LiveFleetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final vehicles = context.watch<DataEngine>().vehicles;
+    final engine = context.watch<DataEngine>();
+    final vehicles = engine.vehicles;
+    final speedLimit = engine.effectiveSpeedThreshold;
 
     return Card(
       child: Column(
@@ -816,6 +826,7 @@ class _LiveFleetCard extends StatelessWidget {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
+              showCheckboxColumn: false,
               headingTextStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.bold),
               dataTextStyle: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
               columns: const [
@@ -823,38 +834,53 @@ class _LiveFleetCard extends StatelessWidget {
                 DataColumn(label: Text('Location')),
                 DataColumn(label: Text('Status')),
                 DataColumn(label: Text('Speed')),
-                DataColumn(label: Text('Fuel %')),
-                DataColumn(label: Text('FASTag Balance')),
+                DataColumn(label: Text('Fuel Present %')),
               ],
               rows: vehicles.map((v) {
-                return DataRow(cells: [
-                  DataCell(Text(v.plate, style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryBlue))),
-                  DataCell(Text(v.loc)),
-                  DataCell(Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: v.status == 'running' ? AppTheme.success.withOpacity(0.1) : AppTheme.warning.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      v.status.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: v.status == 'running' ? AppTheme.success : AppTheme.warning,
+                return DataRow(
+                  onSelectChanged: (_) {
+                    final engine = Provider.of<DataEngine>(context, listen: false);
+                    engine.highlightVehicle(v.plate);
+                    context.go('/vehicles');
+                  },
+                  cells: [
+                    DataCell(
+                      InkWell(
+                        onTap: () {
+                          final engine = Provider.of<DataEngine>(context, listen: false);
+                          engine.highlightVehicle(v.plate);
+                          context.go('/vehicles');
+                        },
+                        child: Text(
+                          v.plate,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryBlue,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
                       ),
                     ),
-                  )),
-                  DataCell(Text('${v.speed} km/h', style: TextStyle(color: v.speed > 85 ? AppTheme.danger : AppTheme.textPrimary))),
-                  DataCell(Text('${v.fuel}%')),
-                  DataCell(v.isBlacklisted
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: AppTheme.danger, borderRadius: BorderRadius.circular(4)),
-                          child: const Text('BLACKLISTED', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                        )
-                      : Text('₹${v.fastag}', style: TextStyle(fontWeight: FontWeight.bold, color: v.fastag < 500 ? AppTheme.danger : AppTheme.textPrimary))),
-                ]);
+                    DataCell(Text(v.lat != 0.0 && v.lng != 0.0 ? '${v.lat.toStringAsFixed(5)}, ${v.lng.toStringAsFixed(5)}' : (v.loc.isNotEmpty ? v.loc : '—'))),
+                    DataCell(Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: v.status == 'running' ? AppTheme.success.withOpacity(0.1) : AppTheme.warning.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        v.status.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: v.status == 'running' ? AppTheme.success : AppTheme.warning,
+                        ),
+                      ),
+                    )),
+                    DataCell(Text('${v.speed} km/h', style: TextStyle(color: v.speed > speedLimit ? AppTheme.danger : AppTheme.textPrimary))),
+                    DataCell(Text('${v.fuel}%')),
+                  ],
+                );
               }).toList(),
             ),
           ),

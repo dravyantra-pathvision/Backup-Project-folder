@@ -192,7 +192,48 @@ class ScaffoldWithNav extends StatelessWidget {
                   ],
                 ),
               if (!isSmallScreen) const VerticalDivider(thickness: 1, width: 1),
-              Expanded(child: child),
+              Expanded(
+                child: Consumer<DataEngine>(
+                  builder: (context, engine, _) {
+                    return Column(
+                      children: [
+                        if (!engine.isConnected)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade900,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(LucideIcons.alertTriangle, color: Colors.white, size: 18),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    '⚠️ AWS Backend Server Unreachable: Operating in Offline Mode with local cached data. Server updates and sync are temporarily offline.',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Expanded(child: child),
+                      ],
+                    );
+                  },
+                ),
+              ),
             ],
           ),
           bottomNavigationBar: isSmallScreen

@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../core/theme.dart';
 import '../models/engine.dart';
 import '../widgets/live_ticker.dart';
+import 'fuel_calculation_details_screen.dart';
 
 class FuelScreen extends StatefulWidget {
   const FuelScreen({super.key});
@@ -108,13 +109,12 @@ class _FuelScreenState extends State<FuelScreen> {
         ? engine.fuelLogs 
         : engine.fuelLogs.where((l) => l.isSuspect).toList();
 
-    double totalSpend = logs.fold(0, (sum, l) => sum + l.cost);
-    double totalLiters = logs.fold(0, (sum, l) => sum + l.liters);
+    final stats = engine.fleetStats;
+    double totalSpend = stats?.fuelCostRupees ?? 0.0;
+    double totalLiters = stats?.fuelConsumedL ?? 0.0;
     int suspectCount = engine.fuelLogs.where((l) => l.isSuspect).length;
-    final completedTrips = engine.trips.where((t) => t.tripCompleted == true).toList();
-    final totalKm = completedTrips.fold(0.0, (s, t) => s + t.distance);
-    final totalTripFuel = completedTrips.fold(0.0, (s, t) => s + t.fuelUsed);
-    final avgMileage = totalTripFuel > 0 ? (totalKm / totalTripFuel) : 0.0;
+    final totalKm = stats?.distanceKm ?? 0.0;
+    final avgMileage = totalLiters > 0 ? (totalKm / totalLiters) : 0.0;
     final avgRate = totalLiters > 0 ? (totalSpend / totalLiters) : 0.0;
 
     return SingleChildScrollView(
@@ -288,9 +288,11 @@ class _FuelScreenState extends State<FuelScreen> {
       children: [
         Row(
           children: [
-            Expanded(child: _kpiCard('Total Spend', '₹${spend.toStringAsFixed(0)}', 'Overall fuel spend', AppTheme.primaryBlue)),
+            Expanded(child: _kpiCard('Total Spend', '₹${spend.toStringAsFixed(0)}', 'Overall fuel spend', AppTheme.primaryBlue,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FuelCalculationDetailsScreen(metric: 'Fuel Spend'))))),
             const SizedBox(width: 12),
-            Expanded(child: _kpiCard('Total Consumed', '${liters.toStringAsFixed(0)} L', 'Avg rate: ₹${avgRate.toStringAsFixed(1)}/L', AppTheme.success)),
+            Expanded(child: _kpiCard('Total Consumed', '${liters.toStringAsFixed(0)} L', 'Avg rate: ₹${avgRate.toStringAsFixed(1)}/L', AppTheme.success,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FuelCalculationDetailsScreen(metric: 'Fuel Loss'))))),
           ],
         ),
         const SizedBox(height: 12),
@@ -305,29 +307,35 @@ class _FuelScreenState extends State<FuelScreen> {
     );
   }
 
-  Widget _kpiCard(String title, String value, String subtitle, Color color) {
-    return Container(
-      width: 200,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-        ],
+  Widget _kpiCard(String title, String value, String subtitle, Color color, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 200,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: onTap != null ? color.withOpacity(0.4) : Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(title, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
+                if (onTap != null) Icon(LucideIcons.externalLink, size: 12, color: color.withOpacity(0.6)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 4),
+            Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+          ],
+        ),
       ),
     );
   }
-
-
 
   Widget _buildLogsTable(List<FuelLog> logs) {
     return Card(
@@ -385,7 +393,6 @@ class _FuelScreenState extends State<FuelScreen> {
               TextField(controller: vehicle, decoration: const InputDecoration(labelText: 'Vehicle Plate', hintText: 'MH 14 CX 5543')),
               TextField(controller: liters, decoration: const InputDecoration(labelText: 'Liters', hintText: '100'), keyboardType: TextInputType.number),
               TextField(controller: rate, decoration: const InputDecoration(labelText: 'Rate per Liter', hintText: '94.2'), keyboardType: TextInputType.number),
-              TextField(controller: odo, decoration: const InputDecoration(labelText: 'Current Odometer', hintText: '48200'), keyboardType: TextInputType.number),
             ],
           ),
         ),
@@ -405,7 +412,7 @@ class _FuelScreenState extends State<FuelScreen> {
                 liters: l,
                 rate: r,
                 cost: l * r,
-                odometer: int.tryParse(odo.text) ?? 0,
+                odometer: 0,
                 date: DateTime.now().toString().split(' ')[0],
                 isSuspect: suspect,
                 suspectReason: suspect ? 'Liters exceed normal tank capacity' : null,

@@ -116,7 +116,7 @@ async function validate(packet) {
     `SELECT * FROM trips
      WHERE vehicle = $1 AND uid = $2
        AND trip_completed IS NOT TRUE
-       AND status NOT IN ('cancelled', 'not started')
+       AND status NOT IN ('cancelled', 'completed')
      ORDER BY created_at DESC LIMIT 1`,
     [vehicle.plate, uid]
   );

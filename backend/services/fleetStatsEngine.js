@@ -115,6 +115,27 @@ async function getFleetStats(uid, period = 'today', fromDate = null, toDate = nu
   const fuelPrice   = Number(settingsRes.rows[0]?.fuel_price_per_liter ?? 92.0);
   const totalFuel   = Number(ts.total_fuel   || 0);
 
+  // ── Monthly Stats (for charts) ───────────────────────────────────────────
+  const monthlyRes = await pool.query(
+    `SELECT
+       TO_CHAR(created_at, 'Mon') as month,
+       COALESCE(SUM(fuel_used), 0) as total_fuel,
+       COALESCE(SUM(money_wasted), 0) as total_loss,
+       COALESCE(SUM(idle_money_wasted), 0) as idle_wasted
+     FROM trips
+     WHERE uid = $1
+       AND created_at >= date_trunc('year', CURRENT_DATE)
+     GROUP BY TO_CHAR(created_at, 'Mon'), EXTRACT(month FROM created_at)
+     ORDER BY EXTRACT(month FROM created_at)`,
+    [uid]
+  );
+  const monthlyStats = monthlyRes.rows.map(r => ({
+    month: r.month,
+    totalFuel: Number(r.total_fuel),
+    totalLoss: Number(r.total_loss),
+    idleWasted: Number(r.idle_wasted),
+  }));
+
   return {
     period:          period || 'custom',
     distanceKm:      Number(Number(ts.total_distance || 0).toFixed(2)),
@@ -132,6 +153,7 @@ async function getFleetStats(uid, period = 'today', fromDate = null, toDate = nu
     devicesOffline:     Number(ds.offline    || 0),
     devicesWeakSignal:  Number(ds.weak_signal || 0),
     activeTripCount:    Number(activeRes.rows[0]?.cnt || 0),
+    monthlyStats:       monthlyStats,
   };
 }
 

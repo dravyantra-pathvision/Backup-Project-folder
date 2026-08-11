@@ -35,13 +35,18 @@ async function sendVerificationEmail(req, res) {
       </div>
     `;
 
-    // Send via our own SMTP setup (completely bypassing Firebase's default sender)
-    await notificationService.sendEmail(email, subject, text, html);
+    // Send via our own SMTP setup if available
+    try {
+      await notificationService.sendEmail(email, subject, text, html);
+      console.log(`[sendVerificationEmail] Custom email sent via SMTP to ${email}`);
+    } catch (smtpErr) {
+      console.warn(`[sendVerificationEmail] Custom SMTP send skipped/failed for ${email}: ${smtpErr.message}. Native Firebase verification email is active as fallback.`);
+    }
 
     return res.status(200).json({ message: 'Verification email sent successfully.' });
   } catch (error) {
-    console.error('Failed to send verification email:', error);
-    return res.status(500).json({ error: 'Failed to send verification email.' });
+    console.error('Failed to generate verification link:', error && error.message);
+    return res.status(500).json({ error: 'Failed to process verification email.' });
   }
 }
 

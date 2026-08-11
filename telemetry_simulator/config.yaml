@@ -1,0 +1,47 @@
+simulation:
+  update_interval_seconds: 5
+  api_endpoint: "https://16-112-99-7.nip.io/api/telemetry"
+  max_speed_kmh: 80
+  
+vehicles:
+  - device_id: "DEV-001"
+    plate: "KA 33 W 1234"
+    driver: "Rajesh Kumar"
+    start_lat: 12.971598
+    start_lng: 77.594562
+    fuel_capacity: 50.0
+    initial_fuel: 45.0
+    behavior: "normal" # normal, aggressive, idle_heavy
+    route_waypoints:
+      - [12.971598, 77.594562]
+      - [12.981598, 77.594562]
+      - [12.981598, 77.604562]
+      - [12.971598, 77.604562]
+
+  - device_id: "DEV-002"
+    plate: "KA 33 W 5678"
+    driver: "Suresh Patel"
+    start_lat: 13.082680
+    start_lng: 80.270721
+    fuel_capacity: 100.0
+    initial_fuel: 95.0
+    behavior: "idle_heavy"
+    route_waypoints:
+      - [13.082680, 80.270721]
+      - [13.092680, 80.270721]
+      - [13.092680, 80.280721]
+      - [13.082680, 80.280721]
+
+  - device_id: "DEV-003"
+    plate: "KA 33 W 6777"
+    driver: "Amit Sharma"
+    start_lat: 19.076090
+    start_lng: 72.877426
+    fuel_capacity: 40.0
+    initial_fuel: 15.0
+    behavior: "aggressive"
+    route_waypoints:
+      - [19.076090, 72.877426]
+      - [19.086090, 72.877426]
+      - [19.086090, 72.887426]
+      - [19.076090, 72.887426]

@@ -1465,6 +1465,7 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
   late final TextEditingController _fleetFuelController;
   late final TextEditingController _fleetIdleController;
   late final TextEditingController _fleetMileageController;
+  late final TextEditingController _fleetFuelPriceController;
 
   bool _isEditingFleet = false;
   bool _fleetSavedSuccessfully = false;
@@ -1476,6 +1477,7 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
     _fleetFuelController = TextEditingController(text: widget.engine.alertSettings.fuelDropThreshold.toStringAsFixed(1));
     _fleetIdleController = TextEditingController(text: widget.engine.alertSettings.idleLimit.toString());
     _fleetMileageController = TextEditingController(text: widget.engine.alertSettings.mileageThreshold.toStringAsFixed(1));
+    _fleetFuelPriceController = TextEditingController(text: widget.engine.alertSettings.fuelPricePerLiter.toStringAsFixed(1));
   }
 
   @override
@@ -1484,6 +1486,7 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
     _fleetFuelController.dispose();
     _fleetIdleController.dispose();
     _fleetMileageController.dispose();
+    _fleetFuelPriceController.dispose();
     super.dispose();
   }
 
@@ -1497,6 +1500,7 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
       _fleetFuelController.text = settings.fuelDropThreshold.toStringAsFixed(1);
       _fleetIdleController.text = settings.idleLimit.toString();
       _fleetMileageController.text = settings.mileageThreshold.toStringAsFixed(1);
+      _fleetFuelPriceController.text = settings.fuelPricePerLiter.toStringAsFixed(1);
     }
 
     return SingleChildScrollView(
@@ -1505,7 +1509,7 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Fleet Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const Text('Set fleet and user-specific limits for speeding and fuel theft alerts.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+          const Text('Set fleet and user-specific limits for speeding, fuel theft, and fuel price.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
           const SizedBox(height: 24),
           if (_fleetSavedSuccessfully) ...[
             Container(
@@ -1545,6 +1549,11 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
             _fleetMileageController,
             enabled: _isEditingFleet,
           ),
+          _buildNumericField(
+            'Default Fuel Price (₹/L)',
+            _fleetFuelPriceController,
+            enabled: _isEditingFleet,
+          ),
           const SizedBox(height: 24),
           if (!_isEditingFleet)
             ElevatedButton.icon(
@@ -1569,6 +1578,7 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
                       _fleetFuelController.text = settings.fuelDropThreshold.toStringAsFixed(1);
                       _fleetIdleController.text = settings.idleLimit.toString();
                       _fleetMileageController.text = settings.mileageThreshold.toStringAsFixed(1);
+                      _fleetFuelPriceController.text = settings.fuelPricePerLiter.toStringAsFixed(1);
                     });
                   },
                   style: OutlinedButton.styleFrom(
@@ -1584,7 +1594,8 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
                     final fuel = double.tryParse(_fleetFuelController.text.trim());
                     final idle = int.tryParse(_fleetIdleController.text.trim());
                     final mileage = double.tryParse(_fleetMileageController.text.trim());
-                    if (speed == null || fuel == null || idle == null || mileage == null) {
+                    final price = double.tryParse(_fleetFuelPriceController.text.trim());
+                    if (speed == null || fuel == null || idle == null || mileage == null || price == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Enter valid fleet settings values')),
                       );
@@ -1596,6 +1607,7 @@ class _FleetSettingsSubScreenState extends State<FleetSettingsSubScreen> {
                         fuelDropThreshold: fuel,
                         idleLimit: idle,
                         mileageThreshold: mileage,
+                        fuelPricePerLiter: price,
                       ),
                     );
                     if (mounted) {

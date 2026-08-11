@@ -4,8 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
-import '../core/config.dart';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import '../models/engine.dart';
@@ -26,6 +27,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
   bool _obscurePass = true;
   bool _obscureConfirmPass = true;
+  bool _agreedToTerms = false; // Checkbox state for terms & privacy policy
 
   bool _hasMinLength = false;
   bool _hasUppercase = false;
@@ -59,7 +61,29 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
+  // Opens external web browser to launch full legal HTML documents from GitHub Pages
+  Future<void> _openWebLegalDocument(String docType) async {
+    final String urlString = docType == 'terms'
+        ? 'https://dravyantra-pathvision.github.io/DravYantra-Website/terms.html'
+        : 'https://dravyantra-pathvision.github.io/DravYantra-Website/privacy.html';
+    final Uri url = Uri.parse(urlString);
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(url, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('Error launching legal web page: $e');
+    }
+  }
+
   Future<void> _handleSignup() async {
+    if (!_agreedToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please accept the Terms and Conditions & Privacy Policy to proceed.')));
+      return;
+    }
     if (_name.text.isEmpty || _email.text.isEmpty || _pass.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
@@ -82,42 +106,83 @@ class _SignupScreenState extends State<SignupScreen> {
       
       final user = cred.user;
       if (user != null) {
-        // Call custom backend endpoint for email verification
+        // 1. Send native Firebase verification email
         try {
-          final engine = Provider.of<DataEngine>(context, listen: false);
-          await http.post(
-            Uri.parse('${engine.baseUrl}/api/auth/send-verification'),
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'email': _email.text.trim()}),
-          ).timeout(const Duration(seconds: 10));
+          await user.sendEmailVerification();
+          debugPrint('Native Firebase email verification sent successfully.');
         } catch (e) {
-          debugPrint('Failed to send custom verification email: $e');
+          debugPrint('Failed to send native Firebase email verification: $e');
         }
 
+        // 2. Set display name
         try {
           await user.updateDisplayName(_name.text.trim());
         } catch (e) {
           debugPrint('Failed to set display name: $e');
         }
-        
+
+        // 3. Immediately sync user into PostgreSQL database (AWS RDS)
+        try {
+          final token = await user.getIdToken();
+          if (mounted) {
+            final baseUrl = Provider.of<DataEngine>(context, listen: false).baseUrl;
+            await http.post(
+              Uri.parse('$baseUrl/api/users/sync'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: jsonEncode({
+                'full_name': _name.text.trim(),
+                'role': 'fleet_owner',
+              }),
+            ).timeout(const Duration(seconds: 10));
+            debugPrint('User successfully synced to PostgreSQL database in AWS RDS.');
+          }
+        } catch (e) {
+          debugPrint('Failed to sync user to PostgreSQL during signup: $e');
+        }
+
+        // 4. Custom backend verification endpoint attempt
+        try {
+          if (mounted) {
+            final baseUrl = Provider.of<DataEngine>(context, listen: false).baseUrl;
+            await http.post(
+              Uri.parse('$baseUrl/api/auth/send-verification'),
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'email': _email.text.trim()}),
+            ).timeout(const Duration(seconds: 10));
+          }
+        } catch (e) {
+          debugPrint('Custom verification notification log: $e');
+        }
+
         if (mounted) {
           await DialogUtils.showSuccessAnimation(context, 'Account Created! Check email to verify.');
           await FirebaseAuth.instance.signOut();
-          if (context.mounted) context.go('/login');
+          if (mounted) context.go('/login');
         }
       }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Signup failed')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Signup failed')));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _handleGoogleSignIn() async {
+    if (!_agreedToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please accept the Terms and Conditions & Privacy Policy to proceed.')));
+      return;
+    }
     setState(() => _isLoading = true);
     try {
       if (kIsWeb) {
@@ -288,20 +353,95 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryBlue, 
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                const SizedBox(height: 20),
+
+                // ── Terms & Privacy Checkbox (Opens Full Legal HTML Web Pages) ──
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Checkbox(
+                        value: _agreedToTerms,
+                        activeColor: AppTheme.primaryBlue,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        onChanged: (val) {
+                          setState(() {
+                            _agreedToTerms = val ?? false;
+                          });
+                        },
+                      ),
                     ),
-                    onPressed: _isLoading ? null : _handleSignup,
-                    child: _isLoading 
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white))
-                        : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _agreedToTerms = !_agreedToTerms;
+                          });
+                        },
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4),
+                            children: [
+                              const TextSpan(text: 'I agree to the '),
+                              WidgetSpan(
+                                child: GestureTapCallbackWidget(
+                                  onTap: () => _openWebLegalDocument('terms'),
+                                  child: const Text(
+                                    'Terms and Conditions',
+                                    style: TextStyle(
+                                      decoration: TextDecoration.underline,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const TextSpan(text: ' and\n'),
+                              WidgetSpan(
+                                child: GestureTapCallbackWidget(
+                                  onTap: () => _openWebLegalDocument('privacy'),
+                                  child: const Text(
+                                    'Privacy Policy',
+                                    style: TextStyle(
+                                      decoration: TextDecoration.underline,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // ── Sign Up Button with Dynamic Opacity & Enable State ──
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _agreedToTerms ? 1.0 : 0.45,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryBlue, 
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: AppTheme.primaryBlue.withOpacity(0.5),
+                        disabledForegroundColor: Colors.white70,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: (_isLoading || !_agreedToTerms) ? null : _handleSignup,
+                      child: _isLoading 
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white))
+                          : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -347,6 +487,21 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Helper widget for clickable text spans inside RichText
+class GestureTapCallbackWidget extends StatelessWidget {
+  final VoidCallback onTap;
+  final Widget child;
+  const GestureTapCallbackWidget({super.key, required this.onTap, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: child,
     );
   }
 }

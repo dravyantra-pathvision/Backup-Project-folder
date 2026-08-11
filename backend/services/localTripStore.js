@@ -61,15 +61,20 @@ const recalculateTripValues = (trip) => {
   const speedingFuelWasted = (distance > 0 && currentMileage > 0 && currentMileage < defaultMileage)
     ? Number(Math.max((distance / currentMileage) - (distance / defaultMileage), 0).toFixed(2))
     : 0.0;
+  const idleDurationVal = typeof trip.idleDuration === 'number' ? trip.idleDuration : Number(trip.idle_duration || 0);
+  const idleMoneyWasted = Number((idleDurationVal * 1.7).toFixed(2));
+  const idleFuelWasted = Number((idleMoneyWasted / 100.0).toFixed(2));
+  const fuelWasted = Number((fuelWastedMileage + idleFuelWasted + theftFuelLoss).toFixed(2));
   return {
     ...trip,
     manual_override: hasExplicitCurrentMileage ? true : trip.manual_override,
     currentMileage,
     fuelUsed,
     fuelSaved,
-    fuelWasted: fuelWastedMileage,
+    fuelWasted,
     speedingFuelWasted,
     theftFuelLoss,
+    idleMoneyWasted,
     theftMoneyLoss: Number((theftFuelLoss * 100).toFixed(2)),
   };
 };

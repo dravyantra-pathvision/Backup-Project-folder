@@ -67,8 +67,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           context.go('/onboarding-wizard');
         }
       } catch (e) {
-        debugPrint('Error fetching onboarding status in splash: $e');
-        context.go('/login');
+        debugPrint('Backend server unreachable during splash status check: $e');
+        // If session exists but AWS backend is down/crashing, enter Dashboard in Offline Mode
+        context.go('/dashboard');
       }
     } else {
       // No valid session — go to login

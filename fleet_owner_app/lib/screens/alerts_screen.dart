@@ -12,6 +12,20 @@ class AlertsScreen extends StatefulWidget {
 }
 
 class _AlertsScreenState extends State<AlertsScreen> {
+  String _formatTime(String t) {
+    try {
+      final dt = DateTime.parse(t).toLocal();
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      final hr = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+      final min = dt.minute.toString().padLeft(2, '0');
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      return '$day/$month/${dt.year}, $hr:$min $ampm';
+    } catch(e) {
+      return t;
+    }
+  }
+
   String _filter = 'all'; // all, critical, warnings
   AlertCategory? _categoryFilter;
 
@@ -441,7 +455,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(a.time, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                        Text(_formatTime(a.time), style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                         a.status == AlertStatus.pending 
                           ? InkWell(
                               onTap: () => engine.acknowledgeAlert(a.id),

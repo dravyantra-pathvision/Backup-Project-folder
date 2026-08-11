@@ -217,6 +217,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final role = _getRole(context);
+    final engine = Provider.of<DataEngine>(context);
+    final isServerDown = !engine.isConnected;
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Center(
@@ -243,7 +246,32 @@ class _LoginScreenState extends State<LoginScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+
+                if (isServerDown) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      border: Border.all(color: Colors.amber.shade400),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.wifi_off_rounded, color: Colors.amber.shade900, size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'AWS Backend is currently unreachable. You can continue to view and use all App UI sections in Offline Mode.',
+                            style: TextStyle(fontSize: 12, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 TextField(
                   controller: _emailOrPhone,
                   decoration: const InputDecoration(
@@ -292,6 +320,30 @@ class _LoginScreenState extends State<LoginScreen> {
                         : const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
+                const SizedBox(height: 12),
+
+                // Offline / Demo Mode Access Option
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isServerDown ? Colors.amber.shade900 : AppTheme.primaryBlue,
+                      side: BorderSide(color: isServerDown ? Colors.amber.shade700 : AppTheme.primaryBlue, width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      backgroundColor: isServerDown ? Colors.amber.shade50 : Colors.transparent,
+                    ),
+                    onPressed: () {
+                      context.go('/dashboard');
+                    },
+                    icon: Icon(isServerDown ? Icons.cloud_off_rounded : Icons.explore_outlined, size: 18),
+                    label: Text(
+                      isServerDown ? 'Explore App (Offline Mode)' : 'Explore App UI',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 16),
                 const Row(
                   children: [
@@ -323,7 +375,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: const Text('Continue with Google', style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w600)),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(

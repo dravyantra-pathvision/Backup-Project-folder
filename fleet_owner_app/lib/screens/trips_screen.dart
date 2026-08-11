@@ -12,7 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:csv/csv.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
+
 import '../models/engine.dart';
 import '../core/theme.dart';
 import '../core/dialogs.dart';
@@ -389,6 +389,18 @@ class _TripFormDialogState extends State<_TripFormDialog> {
   final _fromCtrl = TextEditingController();
   final _toCtrl = TextEditingController();
   final _ewayCtrl = TextEditingController();
+  final _clientCtrl = TextEditingController();
+  final _loadCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _fromCtrl.dispose();
+    _toCtrl.dispose();
+    _ewayCtrl.dispose();
+    _clientCtrl.dispose();
+    _loadCtrl.dispose();
+    super.dispose();
+  }
   bool _ewayUploaded = false;
   bool _ewayUploading = false;
   String? _ewayFileUrl;
@@ -462,6 +474,11 @@ class _TripFormDialogState extends State<_TripFormDialog> {
       _ewayUploaded = widget.trip!.ewayBill.isNotEmpty;
       _ewayFileUrl = widget.trip!.ewayBillUrl;
       _calculatedDistance = widget.trip!.distance;
+      _clientCtrl.text = widget.trip!.client;
+      _loadCtrl.text = widget.trip!.load;
+    } else {
+      _clientCtrl.text = 'New Client';
+      _loadCtrl.text = 'General Cargo';
     }
     // Fetch available lists (do not overwrite master lists) so we can mark unavailable items
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -834,6 +851,18 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                 ),
                 const SizedBox(height: 12),
                 _buildUploadRow('e-Way Bill Document', _ewayUploaded, _ewayUploading, () => _pickAndUpload('eway')),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _clientCtrl,
+                  decoration: const InputDecoration(labelText: 'Client Name'),
+                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _loadCtrl,
+                  decoration: const InputDecoration(labelText: 'Load Type/Description'),
+                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                ),
               ],
             ),
           ),
@@ -851,8 +880,8 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                   driver: _selectedDriver ?? '',
                   from: _fromCtrl.text,
                   to: _toCtrl.text,
-                  load: 'General Cargo',
-                  client: 'New Client',
+                  load: _loadCtrl.text.trim(),
+                  client: _clientCtrl.text.trim(),
                   status: 'not started', // Keep status default as not started!
                   ewayBill: _ewayCtrl.text,
                   ewayBillUrl: _ewayFileUrl ?? '',
@@ -873,6 +902,8 @@ class _TripFormDialogState extends State<_TripFormDialog> {
                   driver: _selectedDriver,
                   from: _fromCtrl.text,
                   to: _toCtrl.text,
+                  load: _loadCtrl.text.trim(),
+                  client: _clientCtrl.text.trim(),
                   ewayBill: _ewayCtrl.text,
                   ewayBillUrl: _ewayFileUrl ?? widget.trip!.ewayBillUrl,
                   distance: _calculatedDistance,
@@ -948,10 +979,6 @@ class _TripDetailDrawer extends StatelessWidget {
             ? AppTheme.danger
             : AppTheme.warning;
 
-    final int hours = trip.idleDuration ~/ 3600;
-    final int minutes = (trip.idleDuration % 3600) ~/ 60;
-    final int seconds = trip.idleDuration % 60;
-    final String idleStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 
     // All trip status values are sourced from the trips table record for this trip.
     final double idleMoney = trip.idleMoneyWasted;
@@ -959,7 +986,7 @@ class _TripDetailDrawer extends StatelessWidget {
     // and displayed as `idle_money_wasted / 100` (liters) per spec.
     final String idleFuelLitersText = '${trip.idleFuelWasted.toStringAsFixed(2)} L';
     final double speedingFuelLoss = trip.speedingFuelLoss;
-    final double speedingMoneyLoss = speedingFuelLoss * 100.0;
+    final double speedingMoneyLoss = trip.speedingMoneyLoss;
     final double theftFuel = trip.theftFuelLoss;
     final double theftMoney = trip.theftMoneyLoss;
 
@@ -1137,26 +1164,26 @@ class _TripDetailDrawer extends StatelessWidget {
                    ),
                  ],
                 const Divider(height: 48),
-                if (trip.status == 'pending' || trip.status == 'not started')
+                if (normalized == 'pending' || normalized == 'not started')
                   ElevatedButton(
                     onPressed: () => onStatusUpdate('running'),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
                     child: const Text('Start Trip'),
                   ),
-                if (trip.status == 'running' || trip.status == 'idle') ...[
+                if (normalized == 'running' || normalized == 'idle') ...[
                   ElevatedButton(
                     onPressed: () => onStatusUpdate('paused'),
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.warning, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-                    child: const Text('Stop Vehicle (Pause Trip)'),
+                    child: const Text('Stop Trip'),
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton(
                     onPressed: () => onStatusUpdate('completed'),
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.ecoGreen, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-                    child: const Text('Mark as Completed'),
+                    child: const Text('Mark Trip as Completed'),
                   ),
                 ],
-                if (trip.status == 'paused') ...[
+                if (normalized == 'paused' || normalized == 'halted' || normalized == 'stopped') ...[
                   ElevatedButton(
                     onPressed: () => onStatusUpdate('running'),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
@@ -1166,7 +1193,7 @@ class _TripDetailDrawer extends StatelessWidget {
                   ElevatedButton(
                     onPressed: () => onStatusUpdate('completed'),
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.ecoGreen, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-                    child: const Text('Mark as Completed'),
+                    child: const Text('Mark Trip as Completed'),
                   ),
                 ],
               ],

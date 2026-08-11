@@ -11,6 +11,67 @@ import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../core/config.dart';
 
+// ── Models ─────────────────────────────────────────────────────────────────
+
+class MonthlyStat {
+  final String month;
+  final double totalFuel;
+  final double totalLoss;
+  final double idleWasted;
+  MonthlyStat({required this.month, required this.totalFuel, required this.totalLoss, required this.idleWasted});
+  factory MonthlyStat.fromMap(Map<String, dynamic> map) => MonthlyStat(
+    month: map['month'] ?? '',
+    totalFuel: (map['totalFuel'] ?? 0).toDouble(),
+    totalLoss: (map['totalLoss'] ?? 0).toDouble(),
+    idleWasted: (map['idleWasted'] ?? 0).toDouble(),
+  );
+}
+
+class FleetStats {
+  final double distanceKm;
+  final double fuelConsumedL;
+  final double fuelCostRupees;
+  final int tripCount;
+  final int completedTrips;
+  final int alertCount;
+  final int idleTimeSeconds;
+  final double co2EmittedKg;
+  final int vehiclesRunning;
+  final int vehiclesIdle;
+  final int vehiclesOffline;
+  final int devicesOnline;
+  final int devicesOffline;
+  final int devicesWeakSignal;
+  final int activeTripCount;
+  final List<MonthlyStat> monthlyStats;
+
+  FleetStats({
+    required this.distanceKm, required this.fuelConsumedL, required this.fuelCostRupees, required this.tripCount,
+    required this.completedTrips, required this.alertCount, required this.idleTimeSeconds, required this.co2EmittedKg,
+    required this.vehiclesRunning, required this.vehiclesIdle, required this.vehiclesOffline, required this.devicesOnline,
+    required this.devicesOffline, required this.devicesWeakSignal, required this.activeTripCount, required this.monthlyStats,
+  });
+
+  factory FleetStats.fromMap(Map<String, dynamic> map) => FleetStats(
+    distanceKm: (map['distanceKm'] ?? 0).toDouble(),
+    fuelConsumedL: (map['fuelConsumedL'] ?? 0).toDouble(),
+    fuelCostRupees: (map['fuelCostRupees'] ?? 0).toDouble(),
+    tripCount: map['tripCount'] ?? 0,
+    completedTrips: map['completedTrips'] ?? 0,
+    alertCount: map['alertCount'] ?? 0,
+    idleTimeSeconds: map['idleTimeSeconds'] ?? 0,
+    co2EmittedKg: (map['co2EmittedKg'] ?? 0).toDouble(),
+    vehiclesRunning: map['vehiclesRunning'] ?? 0,
+    vehiclesIdle: map['vehiclesIdle'] ?? 0,
+    vehiclesOffline: map['vehiclesOffline'] ?? 0,
+    devicesOnline: map['devicesOnline'] ?? 0,
+    devicesOffline: map['devicesOffline'] ?? 0,
+    devicesWeakSignal: map['devicesWeakSignal'] ?? 0,
+    activeTripCount: map['activeTripCount'] ?? 0,
+    monthlyStats: (map['monthlyStats'] as List?)?.map((m) => MonthlyStat.fromMap(m)).toList() ?? [],
+  );
+}
+
 class Organization {
   final String name;
   final String gstin;
@@ -174,6 +235,7 @@ class AlertSettings {
   final bool pushEnabled;
   final bool emailEnabled;
   final double mileageThreshold;
+  final double fuelPricePerLiter;
   final Map<String, bool> perTypeToggles;
 
   AlertSettings({
@@ -181,13 +243,14 @@ class AlertSettings {
     required this.fastagThreshold, required this.whatsappEnabled, required this.smsEnabled, required this.pushEnabled,
     this.emailEnabled = true,
     this.mileageThreshold = 4.0,
+    this.fuelPricePerLiter = 92.0,
     this.perTypeToggles = const {'overSpeed': true, 'excessIdle': true, 'fuelDrop': true, 'geoFence': true, 'harshBraking': true, 'eWayBill': true, 'fastag': true, 'gpsLost': true},
   });
 
   AlertSettings copyWith({
     int? speedThreshold, int? idleLimit, double? fuelDropThreshold, int? fastagThreshold,
     bool? whatsappEnabled, bool? smsEnabled, bool? pushEnabled, bool? emailEnabled,
-    double? mileageThreshold, Map<String, bool>? perTypeToggles
+    double? mileageThreshold, double? fuelPricePerLiter, Map<String, bool>? perTypeToggles
   }) {
     return AlertSettings(
       speedThreshold: speedThreshold ?? this.speedThreshold,
@@ -199,6 +262,7 @@ class AlertSettings {
       pushEnabled: pushEnabled ?? this.pushEnabled,
       emailEnabled: emailEnabled ?? this.emailEnabled,
       mileageThreshold: mileageThreshold ?? this.mileageThreshold,
+      fuelPricePerLiter: fuelPricePerLiter ?? this.fuelPricePerLiter,
       perTypeToggles: perTypeToggles ?? this.perTypeToggles,
     );
   }
@@ -295,7 +359,7 @@ class Trip {
   final double moneyWasted;
   final double idleMoneyWasted;
   // Idle fuel wasted (liters) derived only from the trip's own `idleMoneyWasted` column.
-  double get idleFuelWasted => idleMoneyWasted / 100.0;
+  double get idleFuelWasted => fuelPrice > 0 ? idleMoneyWasted / fuelPrice : idleMoneyWasted / 100.0;
   final double fuelPrice;
   final double speedingFuelLoss;
   final double speedingMoneyLoss;
@@ -509,13 +573,14 @@ class Trip {
         map['speedingFuelWasted']?.toDouble() ??
         map['speeding_fuel_wasted']?.toDouble() ??
         0.0;
-      return speedingFuel * 100.0;
+      final double price = map['fuelPrice']?.toDouble() ?? map['fuel_price']?.toDouble() ?? 100.0;
+      return speedingFuel * (price > 0 ? price : 100.0);
     })(),
     theftFuelLoss: map['theftFuelLoss']?.toDouble() ?? map['theft_fuel_loss']?.toDouble() ?? 0.0,
-    // Ensure theft money loss is derived from the trip's own theft fuel loss value.
     theftMoneyLoss: (() {
       final double tFuel = map['theftFuelLoss']?.toDouble() ?? map['theft_fuel_loss']?.toDouble() ?? 0.0;
-      return tFuel * 100.0;
+      final double price = map['fuelPrice']?.toDouble() ?? map['fuel_price']?.toDouble() ?? 100.0;
+      return tFuel * (price > 0 ? price : 100.0);
     })(),
     updatedAt: map['updatedAt'] ?? map['updated_at'] ?? map['_updatedAt'],
   );
@@ -608,12 +673,12 @@ class Vehicle {
     return (105 - 5 * age).clamp(0, 100);
   }
 
-  Vehicle copyWith({String? deviceId, String? type, String? insurance, String? puc, String? driver, String? status, int? speed, double? fuel, double? mil, double? idle, int? fastag, int? odo, String? lastFill, double? lat, double? lng, List<List<double>>? route, bool? isActive, List<ServiceRecord>? serviceHistory, bool? isBlacklisted, String? imageUrl, String? rcUrl, String? insuranceUrl, String? pucUrl, String? make, String? model, String? fuelType, double? fuelCapacity}) {
+  Vehicle copyWith({String? deviceId, String? type, String? insurance, String? puc, String? driver, String? status, int? speed, double? fuel, double? mil, double? idle, int? fastag, int? odo, String? lastFill, double? lat, double? lng, List<List<double>>? route, bool? isActive, List<ServiceRecord>? serviceHistory, bool? isBlacklisted, String? imageUrl, String? rcUrl, String? insuranceUrl, String? pucUrl, String? make, String? model, String? fuelType, double? fuelCapacity, String? nextService, String? permit}) {
     return Vehicle(
       plate: plate, deviceId: deviceId ?? this.deviceId, year: year, type: type ?? this.type, status: status ?? this.status, driver: driver ?? this.driver,
       loc: loc, speed: speed ?? this.speed, fuel: fuel ?? this.fuel, mil: mil ?? this.mil,
       idle: idle ?? this.idle, fastag: fastag ?? this.fastag, health: health, odo: odo ?? this.odo,
-      nextService: nextService, insurance: insurance ?? this.insurance, permit: permit, puc: puc ?? this.puc, lastFill: lastFill ?? this.lastFill, alerts: alerts,
+      nextService: nextService ?? this.nextService, insurance: insurance ?? this.insurance, permit: permit ?? this.permit, puc: puc ?? this.puc, lastFill: lastFill ?? this.lastFill, alerts: alerts,
       lat: lat ?? this.lat, lng: lng ?? this.lng, route: route ?? this.route,
       isActive: isActive ?? this.isActive,
       serviceHistory: serviceHistory ?? this.serviceHistory,
@@ -744,7 +809,10 @@ class Driver {
     this.licenseUrl,
   });
 
-  Driver copyWith({String? name, String? phone, int? age, int? exp, String? lic, String? licExp, String? blood, String? vehicle, String? status, int? score, double? idle, double? mil, bool? isActive, List<Trip>? tripHistory, String? imageUrl, String? aadharUrl, String? licenseUrl}) {
+  Driver copyWith({
+    String? name, String? phone, int? age, int? exp, String? lic, String? licExp, String? blood, String? vehicle, String? status, int? score, double? idle, double? mil, bool? isActive, List<Trip>? tripHistory, String? imageUrl, String? aadharUrl, String? licenseUrl,
+    String? home, double? rating, bool? onLeave, int? trips, int? harsh, int? overSpeed, int? deviation, int? fuelEff
+  }) {
     return Driver(
       id: id,
       name: name ?? this.name,
@@ -759,14 +827,14 @@ class Driver {
       score: score ?? this.score,
       mil: mil ?? this.mil,
       idle: idle ?? this.idle,
-      trips: trips,
-      harsh: harsh,
-      overSpeed: overSpeed,
-      deviation: deviation,
-      fuelEff: fuelEff,
-      rating: rating,
-      home: home,
-      onLeave: onLeave,
+      trips: trips ?? this.trips,
+      harsh: harsh ?? this.harsh,
+      overSpeed: overSpeed ?? this.overSpeed,
+      deviation: deviation ?? this.deviation,
+      fuelEff: fuelEff ?? this.fuelEff,
+      rating: rating ?? this.rating,
+      home: home ?? this.home,
+      onLeave: onLeave ?? this.onLeave,
       isActive: isActive ?? this.isActive,
       tripHistory: tripHistory ?? this.tripHistory,
       imageUrl: imageUrl ?? this.imageUrl,
@@ -850,9 +918,15 @@ class DataEngine extends ChangeNotifier {
   // (e.g. from a dashboard dropdown), set this id. `TripsScreen` listens and
   // will clear it after honouring the request.
   String? highlightedTripId;
+  String? highlightedVehiclePlate;
 
   void highlightTrip(String? tripId) {
     highlightedTripId = tripId;
+    notifyListeners();
+  }
+
+  void highlightVehicle(String? plate) {
+    highlightedVehiclePlate = plate;
     notifyListeners();
   }
 
@@ -863,6 +937,48 @@ class DataEngine extends ChangeNotifier {
 
   void markAlertsAsRead() {
     hasNewAlerts = false;
+    notifyListeners();
+  }
+
+  /// Resets all accumulated simulation telemetry readings, alerts, and trip stats back to baseline 0.
+  void resetTelemetryAndTripsData() {
+    spend = 0;
+    loss = 0.0;
+    savings = 0;
+    spendLiters = 0;
+    lossLiters = 0;
+    savingsLiters = 0;
+    idleSeconds = 0;
+    idleMinutes = 0;
+    idleHours = 0.0;
+    idleRupees = 0.0;
+    alerts = [];
+    hasNewAlerts = false;
+
+    trips = trips.map((t) => t.copyWith(
+      progress: 0.0,
+      distance: 0.0,
+      fuelUsed: 0.0,
+      liveSpeed: 0.0,
+      power: false,
+      idleDuration: 0,
+      liveIdleTime: '00:00:00',
+      speedingFuelLoss: 0.0,
+      speedingMoneyLoss: 0.0,
+      theftFuelLoss: 0.0,
+      theftMoneyLoss: 0.0,
+      idleMoneyWasted: 0.0,
+      fuelWasted: 0.0,
+      status: 'not started',
+    )).toList();
+
+    vehicles = vehicles.map((v) => v.copyWith(
+      speed: 0,
+      idle: 0.0,
+      route: [],
+      status: 'AVAILABLE',
+    )).toList();
+
     notifyListeners();
   }
 
@@ -893,10 +1009,32 @@ class DataEngine extends ChangeNotifier {
   Future<void> deactivateVehicle(String plate) async {
     final v = vehicles.firstWhere((v) => v.plate == plate);
     final updated = v.copyWith(isActive: false);
-    vehicles = vehicles.map((x) => x.plate == plate ? updated : x).toList();
+    vehicles = vehicles.map<Vehicle>((x) => x.plate == plate ? updated : x).toList();
     _syncVehicleStatuses();
     notifyListeners();
     await _saveVehicleToBackend(updated);
+  }
+
+  Future<void> reactivateVehicle(String plate) async {
+    final v = vehicles.firstWhere((v) => v.plate == plate);
+    final updated = v.copyWith(isActive: true);
+    vehicles = vehicles.map<Vehicle>((x) => x.plate == plate ? updated : x).toList();
+    _syncVehicleStatuses();
+    notifyListeners();
+    await _saveVehicleToBackend(updated);
+  }
+
+  Future<void> scheduleVehicleMaintenance(String plate, DateTime date) async {
+    try {
+      final v = vehicles.firstWhere((v) => v.plate == plate);
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final updated = v.copyWith(nextService: dateStr);
+      vehicles = vehicles.map<Vehicle>((x) => x.plate == plate ? updated : x).toList();
+      notifyListeners();
+      await _saveVehicleToBackend(updated);
+    } catch (e) {
+      debugPrint('Error scheduling maintenance: $e');
+    }
   }
 
   Future<void> _saveVehicleToBackend(Vehicle v) async {
@@ -984,23 +1122,40 @@ class DataEngine extends ChangeNotifier {
         headers: headers,
         body: jsonEncode(d.toMap()),
       );
-      if (response.statusCode == 400 || response.statusCode == 409) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Refresh in-memory driver with DB-returned data (captures image_url, etc.)
+        try {
+          final Map<String, dynamic> updated = jsonDecode(response.body);
+          final refreshed = Driver.fromMap(updated);
+          drivers = drivers.map((x) => x.id == refreshed.id ? refreshed : x).toList();
+          notifyListeners();
+        } catch (_) {}
+      } else if (response.statusCode == 400 || response.statusCode == 409) {
         // Driver already exists, try PUT update instead
         final putResponse = await http.put(
           Uri.parse('$baseUrl/api/drivers/${d.id}'),
           headers: headers,
           body: jsonEncode(d.toMap()),
         );
-        if (putResponse.statusCode != 200 && putResponse.statusCode != 201) {
+        if (putResponse.statusCode == 200 || putResponse.statusCode == 201) {
+          // Refresh in-memory driver with DB-returned data
+          try {
+            final Map<String, dynamic> updated = jsonDecode(putResponse.body);
+            final refreshed = Driver.fromMap(updated);
+            drivers = drivers.map((x) => x.id == refreshed.id ? refreshed : x).toList();
+            notifyListeners();
+          } catch (_) {}
+        } else {
           debugPrint("Error updating driver: ${putResponse.statusCode} ${putResponse.body}");
         }
-      } else if (response.statusCode != 200 && response.statusCode != 201) {
+      } else {
         debugPrint("Error saving driver to backend: ${response.statusCode} ${response.body}");
       }
     } catch (e) {
       debugPrint("Error saving driver to backend: $e");
     }
   }
+
 
   Future<void> removeDriver(String id) async {
     try {
@@ -1079,21 +1234,36 @@ class DataEngine extends ChangeNotifier {
   }
 
   String _effectiveVehicleStatus(Vehicle vehicle) {
-    if (!vehicle.isActive) return 'inactive';
     final activeTrip = _activeTripForVehicle(vehicle);
-    if (activeTrip == null) return 'offline';
-
-    final tripStatus = activeTrip.status.trim();
-    return tripStatus.isEmpty ? 'offline' : tripStatus;
+    if (activeTrip != null && activeTrip.driver.isNotEmpty && activeTrip.driver != 'Unassigned' && activeTrip.driver != 'None') {
+      return 'ASSIGNED';
+    }
+    return 'AVAILABLE';
   }
 
   void _syncVehicleStatuses() {
-    vehicles = vehicles.map((vehicle) {
-      final derivedStatus = _effectiveVehicleStatus(vehicle);
+    vehicles = vehicles.map<Vehicle>((vehicle) {
       final activeTrip = _activeTripForVehicle(vehicle);
-      final tripDriver = activeTrip?.driver.trim() ?? '';
-      final derivedDriver = tripDriver.isNotEmpty ? tripDriver : vehicle.driver;
-      return vehicle.copyWith(status: derivedStatus, driver: derivedDriver);
+      final derivedDriver = activeTrip != null && activeTrip.driver.isNotEmpty && activeTrip.driver != 'Unassigned' && activeTrip.driver != 'None'
+          ? activeTrip.driver
+          : '';
+      
+      // Calculate dynamic live status from active trip
+      String liveStatus = 'offline';
+      if (activeTrip != null) {
+        final tStatus = activeTrip.status.toLowerCase();
+        if (tStatus == 'running' || tStatus == 'started') {
+          final bool isMoving = activeTrip.liveSpeed > 0;
+          final bool isEngineOn = activeTrip.power;
+          if (isEngineOn && !isMoving) {
+            liveStatus = 'idle';
+          } else if (isMoving) {
+            liveStatus = 'running';
+          }
+        }
+      }
+
+      return vehicle.copyWith(status: liveStatus, driver: derivedDriver);
     }).toList();
 
     if (_selectedVehicle != null) {
@@ -1104,11 +1274,6 @@ class DataEngine extends ChangeNotifier {
     }
   }
 
-
-
-  Map<String, double> cityRates = {
-    'Mumbai': 94.27, 'Delhi': 87.62, 'Bangalore': 87.89, 'Chennai': 92.76, 'Hyderabad': 97.82, 'Pune': 92.51,
-  };
 
   List<Alert> alerts = [];
   List<FuelLog> fuelLogs = [];
@@ -1508,6 +1673,7 @@ class DataEngine extends ChangeNotifier {
     timezone: '',
   );
   AlertSettings alertSettings = AlertSettings(speedThreshold: 80, idleLimit: 15, fuelDropThreshold: 5.0, fastagThreshold: 500, whatsappEnabled: true, smsEnabled: false, pushEnabled: true, emailEnabled: true, mileageThreshold: 4.0, perTypeToggles: const {'overSpeed': true, 'excessIdle': true, 'fuelDrop': true, 'geoFence': true, 'harshBraking': true, 'eWayBill': true, 'fastag': true, 'gpsLost': true});
+  FleetStats? fleetStats;
 
   bool isLoggedIn = true;
   bool profileLoaded = false;
@@ -1776,6 +1942,7 @@ class DataEngine extends ChangeNotifier {
           'idleLimit': newSettings.idleLimit,
           'fastagThreshold': newSettings.fastagThreshold,
           'mileageThreshold': newSettings.mileageThreshold,
+          'fuelPricePerLiter': newSettings.fuelPricePerLiter,
           'whatsappEnabled': newSettings.whatsappEnabled,
           'smsEnabled': newSettings.smsEnabled,
           'pushEnabled': newSettings.pushEnabled,
@@ -1882,9 +2049,9 @@ class DataEngine extends ChangeNotifier {
     await _loadFleetSettings();
     await _loadProfileAndOrg();
 
-    // Poll backend periodically so database changes propagate into the UI quickly.
-    // This refreshes trips first, then vehicles, drivers, and summary.
-    _summaryPollTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    // Poll backend periodically so database changes propagate into the UI.
+    // 30s is sufficient — real-time telemetry updates come from the device push layer.
+    _summaryPollTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       () async {
         await _loadTrips();
         await _loadVehicles();
@@ -1892,12 +2059,12 @@ class DataEngine extends ChangeNotifier {
         await _loadSummary();
       }();
     });
-    // poll server alerts periodically
-    Timer.periodic(const Duration(seconds: 5), (_) => _loadAlerts());
-    // Periodic update: do NOT simulate random speeds anymore.
-    // Use the DB-provided `speed` for vehicles only when the vehicle has an
-    // active trip with `power==true`. When not running, show speed as 0 in UI.
-    Timer.periodic(const Duration(seconds: 1), (timer) {
+    // Poll alerts every 30 seconds
+    Timer.periodic(const Duration(seconds: 30), (_) => _loadAlerts());
+
+    // UI ticker: update vehicle speed display and check alerts every 5 seconds.
+    // Do NOT use 1s — it calls notifyListeners() 60x/min causing excessive rebuilds.
+    Timer.periodic(const Duration(seconds: 5), (timer) {
       vehicles = vehicles.map((v) {
         if (!v.isActive) return v;
 
@@ -1905,11 +2072,9 @@ class DataEngine extends ChangeNotifier {
         final activeTrip = _activeTripForVehicle(v);
         final powerOn = activeTrip?.power == true;
 
-        // Do not generate random telemetry. Respect DB value for `speed` when
-        // the trip is running; otherwise present 0 in UI.
+        // Respect DB value for `speed` when trip is running; otherwise show 0.
         final int newSpeed = powerOn ? v.speed : 0;
 
-        // Preserve location values (no synthetic movement).
         final updatedV = v.copyWith(
           lat: v.lat,
           lng: v.lng,
@@ -1919,13 +2084,6 @@ class DataEngine extends ChangeNotifier {
         _checkAlerts(updatedV);
         return updatedV;
       }).toList();
-
-      // Trip rows are now authoritative from the backend. Do not rewrite live
-      // speed or derived trip metrics from vehicle telemetry here, because that
-      // creates a refresh loop against manual DB edits and backend recomputation.
-      // Vehicle telemetry still updates the vehicle list and alerts above.
-
-      // Drivers scores and metrics are authoritative from the DB. No local random simulation.
 
       notifyListeners();
     });
@@ -1938,6 +2096,7 @@ class DataEngine extends ChangeNotifier {
         _attemptSavePending(t);
       }
     });
+
   }
 
   Timer? _summaryPollTimer;
@@ -1970,6 +2129,7 @@ class DataEngine extends ChangeNotifier {
               fuelDropThreshold: (map['fuelDropThreshold'] as num?)?.toDouble() ?? alertSettings.fuelDropThreshold,
               idleLimit: (map['idleLimit'] as num?)?.toInt() ?? alertSettings.idleLimit,
               mileageThreshold: (map['mileageThreshold'] as num?)?.toDouble() ?? alertSettings.mileageThreshold,
+              fuelPricePerLiter: (map['fuelPricePerLiter'] as num?)?.toDouble() ?? alertSettings.fuelPricePerLiter,
             );
             alertSettings = merged;
             notifyListeners();
@@ -2065,6 +2225,16 @@ class DataEngine extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error loading summary: $e');
+    }
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/api/analytics/fleet?period=year'), headers: headers);
+      if (response.statusCode == 200) {
+        fleetStats = FleetStats.fromMap(jsonDecode(response.body));
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error loading fleet stats: $e');
     }
   }
 

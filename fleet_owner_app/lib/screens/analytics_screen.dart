@@ -106,28 +106,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final now = DateTime.now();
       final dateStr = '${now.day}/${now.month}/${now.year}';
 
-      // Compute analytics
-      final completedTrips = engine.trips.where((t) {
-        if (t.tripCompleted != true) return false;
-        try {
-          final tripDate = DateTime.parse(t.date);
-          if (_dateRange == 'This Year') {
-            return tripDate.year == now.year;
-          } else {
-            int days = 30;
-            if (_dateRange == 'Last 7 Days') days = 7;
-            else if (_dateRange == 'Last 90 Days') days = 90;
-            return now.difference(tripDate).inDays <= days;
-          }
-        } catch (_) {
-          return true; // Fallback for trips without valid date
-        }
-      }).toList();
-      final totalKm = completedTrips.fold(0.0, (s, t) => s + t.distance);
-      final totalFuel = completedTrips.fold(0.0, (s, t) => s + t.fuelUsed);
+      final stats = engine.fleetStats;
+      if (stats == null) throw Exception("Analytics data not ready");
+
+      final totalKm = stats.distanceKm;
+      final totalFuel = stats.fuelConsumedL;
       final avgMileage = totalFuel > 0 ? totalKm / totalFuel : 0.0;
-      final totalIdleHrs = completedTrips.fold(0, (s, t) => s + t.idleDuration) / 3600.0;
-      final totalFuelCost = engine.spend.toDouble();
+      final totalIdleHrs = stats.idleTimeSeconds / 3600.0;
+      final totalFuelCost = stats.fuelCostRupees;
 
       pdf.addPage(pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -154,7 +140,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           pw.SizedBox(height: 8),
           pw.Table.fromTextArray(
             headers: ['Vehicle', 'Driver', 'Route', 'Distance', 'Fuel Used', 'Status'],
-            data: completedTrips.take(20).map((t) => [
+            data: engine.trips.where((t) => t.tripCompleted == true).take(20).map((t) => [
               t.vehicle, t.driver,
               '${t.from} → ${t.to}',
               '${t.distance.toStringAsFixed(0)} km',
@@ -182,21 +168,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Widget _buildKpis(DataEngine engine) {
-    final completedTrips = engine.trips.where((t) => t.tripCompleted == true).toList();
-    final totalKm = completedTrips.fold(0.0, (s, t) => s + t.distance);
-    final totalFuel = completedTrips.fold(0.0, (s, t) => s + t.fuelUsed);
-    final avgMileage = totalFuel > 0 ? (totalKm / totalFuel) : engine.avgMil;
-    final totalIdleMins = completedTrips.fold(0, (s, t) => s + t.idleDuration) / 60.0;
-    final totalIdlePct = completedTrips.isNotEmpty
-        ? (totalIdleMins / (completedTrips.length * 480) * 100).clamp(0, 100)
-        : engine.idle;
-    final totalFuelCostK = (engine.spend / 100000.0);
+    final stats = engine.fleetStats;
+    if (stats == null) {
+      return const Padding(
+        padding: EdgeInsets.all(32.0),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final totalKm = stats.distanceKm;
+    final avgMileage = stats.fuelConsumedL > 0 ? (totalKm / stats.fuelConsumedL) : 0.0;
+    final totalIdlePct = stats.tripCount > 0 
+        ? ((stats.idleTimeSeconds / 3600.0) / (stats.tripCount * 8) * 100).clamp(0, 100)
+        : 0.0;
+    final totalFuelCostK = (stats.fuelCostRupees / 100000.0);
 
     return Column(
       children: [
         Row(
           children: [
-            Expanded(child: _kpiCard('Total Fleet km', _formatNum(totalKm.round()), '${completedTrips.length} completed trips', AppTheme.primaryBlue)),
+            Expanded(child: _kpiCard('Total Fleet km', _formatNum(totalKm.round()), '${stats.tripCount} completed trips', AppTheme.primaryBlue)),
             const SizedBox(width: 12),
             Expanded(child: _kpiCard('Fleet Avg km/L', avgMileage.toStringAsFixed(1), 'km per liter', AppTheme.success)),
           ],
@@ -265,32 +256,24 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  // Build spots from real trip data grouped by month
-  List<FlSpot> _buildMonthlySpots(DataEngine engine, double Function(Trip) getValue) {
-    final now = DateTime.now();
-    final Map<int, double> monthMap = {};
-    for (final t in engine.trips) {
-      try {
-        final d = DateTime.tryParse(t.date);
-        if (d == null) continue;
-        final mIndex = (now.month - d.month + 12) % 12;
-        if (mIndex > 4) continue;
-        final slot = 4 - mIndex;
-        monthMap[slot] = (monthMap[slot] ?? 0) + getValue(t);
-      } catch (_) {}
-    }
-    if (monthMap.isEmpty) {
+  List<FlSpot> _buildMonthlySpotsFromStats(List<MonthlyStat> mStats, double Function(MonthlyStat) getValue) {
+    if (mStats.isEmpty) {
       return [const FlSpot(0, 0), const FlSpot(1, 0), const FlSpot(2, 0), const FlSpot(3, 0), const FlSpot(4, 0)];
     }
-    return List.generate(5, (i) => FlSpot(i.toDouble(), monthMap[i] ?? 0));
+    final lastFive = mStats.length > 5 ? mStats.sublist(mStats.length - 5) : mStats;
+    return List.generate(5, (i) {
+      if (i < lastFive.length) {
+        return FlSpot(i.toDouble(), getValue(lastFive[i]));
+      }
+      return FlSpot(i.toDouble(), 0);
+    });
   }
 
-  List<String> _lastFiveMonthLabels() {
-    final now = DateTime.now();
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  List<String> _lastFiveMonthLabelsFromStats(List<MonthlyStat> mStats) {
+    final lastFive = mStats.length > 5 ? mStats.sublist(mStats.length - 5) : mStats;
     return List.generate(5, (i) {
-      final m = (now.month - 4 + i - 1 + 12) % 12;
-      return months[m];
+      if (i < lastFive.length) return lastFive[i].month;
+      return '';
     });
   }
 
@@ -329,8 +312,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Widget _buildFuelTab(DataEngine engine) {
-    final labels = _lastFiveMonthLabels();
-    final costSpots = _buildMonthlySpots(engine, (t) => t.fuelUsed * 100.0);
+    final stats = engine.fleetStats;
+    if (stats == null) return const SizedBox.shrink();
+
+    final labels = _lastFiveMonthLabelsFromStats(stats.monthlyStats);
+    final fuelPrice = engine.alertSettings.fuelPricePerLiter;
+    final costSpots = _buildMonthlySpotsFromStats(stats.monthlyStats, (m) => m.totalFuel * fuelPrice);
     // Top stations from fuel logs
     final stationMap = <String, double>{};
     for (final f in engine.fuelLogs) {
@@ -365,8 +352,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Widget _buildMileageTab(DataEngine engine) {
-    final labels = _lastFiveMonthLabels();
-    final mileageSpots = _buildMonthlySpots(engine, (t) => t.currentMileage > 0 ? t.currentMileage : t.defaultMileage);
+    final stats = engine.fleetStats;
+    if (stats == null) return const SizedBox.shrink();
+
+    final labels = _lastFiveMonthLabelsFromStats(stats.monthlyStats);
+    // Rough monthly mileage can be derived or we just plot fuel loss here.
+    // Let's plot fuel loss inverted as mileage trend proxy, or 0 if missing.
+    final mileageSpots = _buildMonthlySpotsFromStats(stats.monthlyStats, (m) => m.totalFuel > 0 ? (100 - m.totalLoss/m.totalFuel) : 0);
     final sortedByMileage = List<Trip>.from(engine.trips.where((t) => t.currentMileage > 0))
       ..sort((a, b) => b.currentMileage.compareTo(a.currentMileage));
 
@@ -397,8 +389,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Widget _buildIdleTab(DataEngine engine) {
-    final labels = _lastFiveMonthLabels();
-    final idleSpots = _buildMonthlySpots(engine, (t) => t.idleDuration / 3600.0);
+    final stats = engine.fleetStats;
+    if (stats == null) return const SizedBox.shrink();
+
+    final labels = _lastFiveMonthLabelsFromStats(stats.monthlyStats);
+    final idleSpots = _buildMonthlySpotsFromStats(stats.monthlyStats, (m) => m.idleWasted);
     final sortedByIdle = List<Trip>.from(engine.trips)..sort((a, b) => b.idleDuration.compareTo(a.idleDuration));
 
     return Card(

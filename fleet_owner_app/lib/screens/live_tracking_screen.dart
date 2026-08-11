@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import '../models/engine.dart';
 import '../core/theme.dart';
 
@@ -27,7 +28,15 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   Widget build(BuildContext context) {
     final engine = context.watch<DataEngine>();
     final vehicles = engine.vehicles.where((v) {
-      bool matchesFilter = _selectedFilter == 'all' || v.status == _selectedFilter;
+      bool matchesFilter = _selectedFilter == 'all';
+      final statusLower = v.status.toLowerCase();
+      if (_selectedFilter == 'running') {
+        matchesFilter = statusLower == 'running';
+      } else if (_selectedFilter == 'idle') {
+        matchesFilter = statusLower == 'idle';
+      } else if (_selectedFilter == 'offline') {
+        matchesFilter = statusLower == 'offline' || statusLower == 'stopped';
+      }
       bool matchesSearch = _searchQuery.isEmpty || 
           v.plate.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           v.driver.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -47,6 +56,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             TileLayer(
               urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
               subdomains: const ['a', 'b', 'c', 'd'],
+              retinaMode: RetinaMode.isHighDensity(context),
             ),
             if (selectedVehicle != null && selectedVehicle.route.isNotEmpty)
               PolylineLayer(
@@ -202,21 +212,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     ),
                     _FilterChip(
                       label: 'Running',
-                      count: engine.vehicles.where((v) => v.status == 'running').length,
+                      count: engine.vehicles.where((v) => v.status.toLowerCase() == 'running').length,
                       isSelected: _selectedFilter == 'running',
                       color: AppTheme.success,
                       onTap: () => setState(() => _selectedFilter = 'running'),
                     ),
                     _FilterChip(
                       label: 'Idle',
-                      count: engine.vehicles.where((v) => v.status == 'idle').length,
+                      count: engine.vehicles.where((v) => v.status.toLowerCase() == 'idle').length,
                       isSelected: _selectedFilter == 'idle',
                       color: AppTheme.warning,
                       onTap: () => setState(() => _selectedFilter = 'idle'),
                     ),
                     _FilterChip(
                       label: 'Offline',
-                      count: 0,
+                      count: engine.vehicles.where((v) => v.status.toLowerCase() == 'offline' || v.status.toLowerCase() == 'stopped').length,
                       isSelected: _selectedFilter == 'offline',
                       color: AppTheme.textSecondary,
                       onTap: () => setState(() => _selectedFilter = 'offline'),
@@ -361,7 +371,14 @@ class _VehicleDetailPanel extends StatelessWidget {
                       ],
                     ),
                   ),
-                  TextButton(onPressed: () {}, child: const Text('HISTORY')),
+                  TextButton(
+                    onPressed: () {
+                      final engine = Provider.of<DataEngine>(context, listen: false);
+                      engine.highlightVehicle(vehicle.plate);
+                      context.go('/vehicles');
+                    },
+                    child: const Text('HISTORY'),
+                  ),
                 ],
               ),
             ),

@@ -22,8 +22,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   Vehicle? _detailVehicle;
   String _searchQuery = '';
   String _selectedStatus = 'All';
-  final ScrollController _filterScrollController = ScrollController();
-  final ScrollController _tableScrollController = ScrollController();
+  // Scroll controllers reserved for future filter/table use
   // KPI animation state: controls staggered entrance of cards
   final List<bool> _kpiVisible = [false, false, false, false];
   bool _kpiAnimationStarted = false;
@@ -44,14 +43,10 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     });
   }
 
-  Color _statusColor(String status, {required bool isActive}) {
-    if (!isActive) return AppTheme.textSecondary;
-    final normalized = status.trim().toLowerCase().replaceAll('_', ' ');
-    if (normalized == 'completed') return AppTheme.ecoGreen;
-    if (normalized == 'running') return Colors.blue;
-    if (normalized == 'idle' || normalized == 'pending' || normalized == 'not started') return Colors.orange;
-    if (normalized == 'cancelled') return AppTheme.danger;
-    if (normalized == 'offline') return AppTheme.textSecondary;
+  Color _statusColor(String status) {
+    final normalized = status.trim().toUpperCase();
+    if (normalized == 'ASSIGNED') return AppTheme.danger;
+    if (normalized == 'AVAILABLE') return AppTheme.success;
     return AppTheme.textSecondary;
   }
 
@@ -63,31 +58,47 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     final filteredVehicles = vehicles.where((v) {
       final matchesSearch = v.plate.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           v.driver.toLowerCase().contains(_searchQuery.toLowerCase());
-          
-        final isAssigned = v.driver.isNotEmpty && v.driver != 'Unassigned' && v.driver != 'None';
-        final isOffline = v.status == 'offline';
       
+      final isAssigned = v.driver.isNotEmpty && v.driver != 'Unassigned' && v.driver != 'None';
       final matchesStatus = _selectedStatus == 'All' ||
-          (_selectedStatus == 'Running' && isAssigned && v.status == 'running') ||
-          (_selectedStatus == 'Idle' && isAssigned && v.status == 'idle') ||
-          (_selectedStatus == 'Offline' && isOffline);
+          (_selectedStatus == 'Assigned' && isAssigned) ||
+          (_selectedStatus == 'Available' && !isAssigned);
           
       return matchesSearch && matchesStatus;
     }).toList();
     
+    final String? highlighted = engine.highlightedVehiclePlate;
+    if (highlighted != null && highlighted.isNotEmpty) {
+      Vehicle? found;
+      try {
+        found = vehicles.firstWhere((v) => v.plate == highlighted);
+      } catch (e) {
+        found = null;
+      }
+      if (found != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() => _detailVehicle = found);
+          _scaffoldKey.currentState?.openEndDrawer();
+          engine.highlightVehicle(null);
+        });
+      }
+    }
+
+    if (_detailVehicle != null) {
+      _detailVehicle = vehicles.firstWhere(
+        (v) => v.plate == _detailVehicle!.plate,
+        orElse: () => _detailVehicle!,
+      );
+    }
+
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: Colors.transparent,
-      endDrawer: _detailVehicle != null 
-        ? _VehicleDetailDrawer(
-            vehicle: _detailVehicle!, 
-            onClose: () => Navigator.pop(context),
-            onDeactivate: () {
-              engine.deactivateVehicle(_detailVehicle!.plate);
-              Navigator.pop(context);
-            },
-          ) 
-        : null,
+      endDrawer: _VehicleDetailDrawer(
+        vehiclePlate: _detailVehicle?.plate ?? '',
+        onClose: () => Navigator.pop(context),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -172,7 +183,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: ['All', 'Running', 'Idle', 'Offline'].map((status) {
+            children: ['All', 'Assigned', 'Available'].map((status) {
               return Padding(
                 padding: const EdgeInsets.only(right: 8.0),
                 child: ChoiceChip(
@@ -193,29 +204,26 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   }
 
   Widget _buildKpis(List<Vehicle> vehicles) {
-    int running = vehicles.where((v) => v.status == 'running' && v.isActive).length;
-    int idle = vehicles.where((v) => v.status == 'idle' && v.isActive).length;
-    int offline = vehicles.where((v) => v.status == 'offline' && v.isActive).length;
-    int alerts = vehicles.where((v) => v.alerts.isNotEmpty && v.isActive).length;
-    int avgHealth = vehicles.isEmpty ? 0 : vehicles.map((v) => v.health).reduce((a, b) => a + b) ~/ vehicles.length;
+    int assigned = vehicles.where((v) => v.status == 'ASSIGNED').length;
+    int available = vehicles.where((v) => v.status == 'AVAILABLE').length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // two columns grid layout: compute width so two cards fit per row
         final gap = 12.0;
-        final cardWidth = (constraints.maxWidth - gap) / 2;
+        final isWide = constraints.maxWidth > 600;
+        final cardWidth = isWide
+            ? (constraints.maxWidth - (gap * 2)) / 3
+            : (constraints.maxWidth - gap) / 2;
         final cards = [
           _kpiCard('Total Fleet', '${vehicles.length}', 'vehicles', AppTheme.primaryBlue),
-          _kpiCard('Running Now', '$running', 'of ${vehicles.length}', AppTheme.success),
-          _kpiCard('Idle / Stopped', '$idle', 'parked', AppTheme.warning),
-          _kpiCard('Offline', '$offline', 'unassigned', AppTheme.textSecondary),
+          _kpiCard('Assigned', '$assigned', 'on active trips', AppTheme.danger),
+          _kpiCard('Available', '$available', 'ready for dispatch', AppTheme.success),
         ];
 
         return Wrap(
           spacing: gap,
           runSpacing: gap,
           children: List.generate(cards.length, (i) {
-            // staggered entrance: slide up + fade in
             final visible = i < _kpiVisible.length ? _kpiVisible[i] : true;
             return SizedBox(
               width: cardWidth < 150 ? 150 : cardWidth,
@@ -240,7 +248,6 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
 
   Widget _kpiCard(String title, String value, String subtitle, Color color) {
     return Container(
-      width: 150,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -261,142 +268,155 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   }
 
   Widget _buildVehicleTable(BuildContext context, DataEngine engine, List<Vehicle> vehicles) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Scrollbar(
-            controller: _tableScrollController,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
-              controller: _tableScrollController,
-              scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: DataTable(
-                columnSpacing: 20,
-                horizontalMargin: 12,
-                headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
-                columns: const [
-                  DataColumn(label: Text('Reg. Plate')),
-                  DataColumn(label: Text('Driver')),
-                  DataColumn(label: Text('Status/Loc')),
-                  DataColumn(label: Text('Fuel %')),
-                  DataColumn(label: Text('Avg. Mileage')),
-                  DataColumn(label: Text('Compliance')),
-                  DataColumn(label: Text('Health')),
-                  DataColumn(label: Text('View / Edit / Remove')),
-                ],
-                rows: vehicles.map((v) {
-                  final statusLabel = v.isActive ? v.status.replaceAll('_', ' ').toUpperCase() : 'DEACTIVATED';
-                  final statusColor = _statusColor(v.status, isActive: v.isActive);
-                  bool isExpired = (() { try { final d = v.nextService; return d.isNotEmpty && DateTime.now().isAfter(DateTime.parse(d)); } catch (_) { return false; } })();
-                  return DataRow(
-                    color: MaterialStateProperty.resolveWith((states) => v.isActive ? null : Colors.grey.shade100),
-                    cells: [
-                      DataCell(Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(v.plate, style: TextStyle(fontWeight: FontWeight.bold, color: v.isActive ? AppTheme.primaryBlue : AppTheme.textSecondary)),
-                          Text(v.type, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                        ],
-                      )),
-                      DataCell(Text(v.driver)),
-                      DataCell(Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(statusLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor)),
-                          Text(v.loc, style: const TextStyle(fontSize: 11)),
-                        ],
-                      )),
-                      DataCell(Text('${v.fuel}%')),
-                      DataCell(Text('${v.mil} km/L')),
-                      DataCell(Row(
-                        children: [
-                          _CompIcon(icon: LucideIcons.shieldCheck, color: AppTheme.success, tooltip: 'Insurance Valid'),
-                          _CompIcon(icon: LucideIcons.fileText, color: isExpired ? AppTheme.danger : AppTheme.success, tooltip: 'Service Due: ${v.nextService}'),
-                        ],
-                      )),
-                      DataCell(Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: (calculateHealth(v.year) > 70 ? AppTheme.success : AppTheme.warning).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                        child: Text('${calculateHealth(v.year)}%', style: TextStyle(color: calculateHealth(v.year) > 70 ? AppTheme.success : AppTheme.warning, fontWeight: FontWeight.bold, fontSize: 12)),
-                      )),
-                      DataCell(Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(LucideIcons.eye, size: 18), 
-                            onPressed: () {
-                              setState(() => _detailVehicle = v);
-                              _scaffoldKey.currentState?.openEndDrawer();
+    if (vehicles.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text('No vehicles found.', style: TextStyle(color: AppTheme.textSecondary)),
+        ),
+      );
+    }
+    return Column(
+      children: vehicles.map((v) {
+        final isAssigned = v.driver.isNotEmpty && v.driver != 'Unassigned' && v.driver != 'None';
+        final statusLabel = isAssigned ? 'ASSIGNED' : 'AVAILABLE';
+        final statusColor = _statusColor(statusLabel);
+        final healthVal = calculateHealth(v.year);
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              setState(() => _detailVehicle = v);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _scaffoldKey.currentState?.openEndDrawer();
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Row(
+                children: [
+                  // Vehicle icon
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(LucideIcons.truck, color: statusColor, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          v.plate,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.primaryBlue),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${v.type}  •  ${v.driver.isNotEmpty && v.driver != "Unassigned" ? v.driver : "No Driver"}',
+                          style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: statusColor,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(statusLabel, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white)),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text('Fuel ${v.fuel}%', style: TextStyle(fontSize: 9, color: v.fuel < 20 ? AppTheme.danger : AppTheme.textSecondary)),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (healthVal > 70 ? AppTheme.success : AppTheme.warning).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text('Health $healthVal%', style: TextStyle(fontSize: 9, color: healthVal > 70 ? AppTheme.success : AppTheme.warning, fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Edit / Delete
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(LucideIcons.edit2, size: 15, color: AppTheme.textSecondary),
+                        onPressed: () => _showVehicleForm(context, engine, v: v),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      IconButton(
+                        icon: const Icon(LucideIcons.trash2, size: 15, color: AppTheme.danger),
+                        onPressed: () async {
+                          final hasStartedTrip = engine.trips.any((t) =>
+                              t.vehicle.trim().toUpperCase() == v.plate.trim().toUpperCase() &&
+                              (t.status == 'running' || t.status == 'idle'));
+                          if (hasStartedTrip) {
+                            if (context.mounted) {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Vehicle In Active Trip'),
+                                  content: const Text('Stop the trip first before deleting.'),
+                                  actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                                ),
+                              );
                             }
-                          ),
-                          IconButton(
-                            icon: const Icon(LucideIcons.edit2, size: 18), 
-                            onPressed: () => _showVehicleForm(context, engine, v: v)
-                          ),
-                          IconButton(
-                            icon: const Icon(LucideIcons.trash2, size: 18, color: AppTheme.danger), 
-                            onPressed: () async {
-                              final hasStartedTrip = engine.trips.any((t) =>
-                                  t.vehicle.trim().toUpperCase() == v.plate.trim().toUpperCase() &&
-                                  (t.status == 'running' || t.status == 'idle'));
-                              if (hasStartedTrip) {
-                                showDialog(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('Vehicle Assigned to Active Trip'),
-                                    content: const Text('This vehicle is assigned for a trip, first stop the trip and then come back and delete.'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx),
-                                        child: const Text('Close'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              } else {
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('Delete Vehicle'),
-                                    content: Text('Are you sure you want to delete vehicle ${v.plate}?'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, false),
-                                        child: const Text('Cancel'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, true),
-                                        child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (confirm == true) {
-                                  await engine.removeVehicle(v.plate);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('${v.plate} removed')),
-                                    );
-                                  }
-                                }
+                          } else {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Delete Vehicle'),
+                                content: Text('Remove ${v.plate}?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: AppTheme.danger))),
+                                ],
+                              ),
+                            );
+                            if (confirm == true && context.mounted) {
+                              await engine.removeVehicle(v.plate);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${v.plate} removed')));
                               }
                             }
-                          ),
-                        ],
-                      )),
+                          }
+                        },
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ],
-                  );
-                }).toList(),
+                  ),
+                  const Icon(LucideIcons.chevronRight, size: 14, color: AppTheme.textSecondary),
+                ],
               ),
             ),
           ),
         );
-        },
-      ),
+      }).toList(),
     );
   }
 
@@ -426,13 +446,15 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   late TextEditingController _makeCtrl;
   late TextEditingController _modelCtrl;
   late TextEditingController _fuelCapCtrl;
+  late TextEditingController _milCtrl;
   String _selectedFuelType = 'Diesel';
-  String _selectedType = 'HCV';
+  String _selectedType = '6 wheeler';
   
   DateTime? _rcRegDate;
-  DateTime? _rcExpDate;
   DateTime? _insExpDate;
   DateTime? _pucExpDate;
+  DateTime? _nextServiceDate;
+  DateTime? _permitDate;
 
   String? _rcFileUrl;
   String? _insFileUrl;
@@ -454,12 +476,18 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
     _makeCtrl = TextEditingController(text: widget.vehicle?.make ?? '');
     _modelCtrl = TextEditingController(text: widget.vehicle?.model ?? '');
     _fuelCapCtrl = TextEditingController(text: widget.vehicle?.fuelCapacity?.toString() ?? '');
+    _milCtrl = TextEditingController(text: widget.vehicle?.mil.toString() ?? '');
     
     if (widget.vehicle != null) {
       _selectedFuelType = widget.vehicle!.fuelType ?? 'Diesel';
-      _selectedType = widget.vehicle!.type.isNotEmpty ? widget.vehicle!.type : 'HCV';
+      _selectedType = ['6 wheeler', '8 wheeler', '10+ wheelers'].contains(widget.vehicle!.type)
+          ? widget.vehicle!.type
+          : '6 wheeler';
       _insExpDate = DateTime.tryParse(widget.vehicle!.insurance);
       _pucExpDate = DateTime.tryParse(widget.vehicle!.puc);
+      _rcRegDate = DateTime(widget.vehicle!.year, 1, 1);
+      _nextServiceDate = DateTime.tryParse(widget.vehicle!.nextService);
+      _permitDate = DateTime.tryParse(widget.vehicle!.permit);
       _rcFileUrl = widget.vehicle!.rcUrl;
       _insFileUrl = widget.vehicle!.insuranceUrl;
       _pucFileUrl = widget.vehicle!.pucUrl;
@@ -476,6 +504,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
     _makeCtrl.dispose();
     _modelCtrl.dispose();
     _fuelCapCtrl.dispose();
+    _milCtrl.dispose();
     super.dispose();
   }
 
@@ -619,17 +648,17 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
             fuelCapacity: double.tryParse(_fuelCapCtrl.text.trim()),
             status: 'offline', 
             driver: 'Unassigned',
-            loc: 'Depot', 
+            loc: '', 
             speed: 0, 
             fuel: 100, 
-            mil: 0, 
+            mil: double.tryParse(_milCtrl.text.trim()) ?? 0.0, 
             idle: 0, 
             fastag: 0, 
             health: 100, 
             odo: 0,
-            nextService: '2025-01-01', 
+            nextService: _nextServiceDate != null ? _nextServiceDate!.toIso8601String().split('T').first : '2025-01-01', 
             insurance: _insExpDate != null ? _insExpDate!.toIso8601String().split('T').first : '2025-01-01', 
-            permit: '2025-01-01', 
+            permit: _permitDate != null ? _permitDate!.toIso8601String().split('T').first : '2025-01-01', 
             puc: _pucExpDate != null ? _pucExpDate!.toIso8601String().split('T').first : '2025-01-01',
             lastFill: 'N/A', 
             alerts: [], 
@@ -648,8 +677,11 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
             model: _modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim(),
             fuelType: _selectedFuelType,
             fuelCapacity: double.tryParse(_fuelCapCtrl.text.trim()),
+            mil: double.tryParse(_milCtrl.text.trim()) ?? widget.vehicle!.mil,
             insurance: _insExpDate != null ? _insExpDate!.toIso8601String().split('T').first : widget.vehicle!.insurance,
             puc: _pucExpDate != null ? _pucExpDate!.toIso8601String().split('T').first : widget.vehicle!.puc,
+            nextService: _nextServiceDate != null ? _nextServiceDate!.toIso8601String().split('T').first : widget.vehicle!.nextService,
+            permit: _permitDate != null ? _permitDate!.toIso8601String().split('T').first : widget.vehicle!.permit,
             imageUrl: _rcFileUrl ?? _insFileUrl ?? _pucFileUrl ?? widget.vehicle!.imageUrl,
             rcUrl: _rcFileUrl ?? widget.vehicle!.rcUrl,
             insuranceUrl: _insFileUrl ?? widget.vehicle!.insuranceUrl,
@@ -703,44 +735,28 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
                   },
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _makeCtrl,
-                        decoration: const InputDecoration(labelText: 'Make (e.g. Tata)'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _modelCtrl,
-                        decoration: const InputDecoration(labelText: 'Model (e.g. Prima)'),
-                      ),
-                    ),
-                  ],
+                TextFormField(
+                  controller: _makeCtrl,
+                  decoration: const InputDecoration(labelText: 'Make (e.g. Tata)'),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(labelText: 'Vehicle Type'),
-                        value: _selectedType,
-                        items: ['HCV', 'LCV', 'MCV', 'Bus', 'Car', 'Other'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                        onChanged: (val) => setState(() => _selectedType = val!),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(labelText: 'Fuel Type'),
-                        value: _selectedFuelType,
-                        items: ['Diesel', 'Petrol', 'CNG', 'EV'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                        onChanged: (val) => setState(() => _selectedFuelType = val!),
-                      ),
-                    ),
-                  ],
+                TextFormField(
+                  controller: _modelCtrl,
+                  decoration: const InputDecoration(labelText: 'Model (e.g. 2024, 2020 or 2015)'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(labelText: 'Vehicle Type'),
+                  value: _selectedType,
+                  items: ['6 wheeler', '8 wheeler', '10+ wheelers'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (val) => setState(() => _selectedType = val!),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(labelText: 'Fuel Type'),
+                  value: _selectedFuelType,
+                  items: ['Diesel', 'Petrol', 'CNG', 'EV'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (val) => setState(() => _selectedFuelType = val!),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -748,47 +764,51 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'Fuel Capacity (Liters)'),
                 ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _milCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Mileage (Average km/L)'),
+                ),
                 const SizedBox(height: 24),
                 const Text('Hardware Device ID (Microcontroller UID)', style: TextStyle(fontWeight: FontWeight.w500)),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      icon: const Icon(LucideIcons.scanLine, size: 18),
-                      label: const Text('Scan QR'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
-                        foregroundColor: AppTheme.primaryBlue,
-                        elevation: 0,
-                      ),
-                      onPressed: () async {
-                        final scannedId = await showDialog<String>(
-                          context: context,
-                          builder: (ctx) => const QrScannerDialog(),
-                        );
-                        if (scannedId != null && scannedId.isNotEmpty) {
-                          setState(() {
-                            _deviceIdCtrl.text = scannedId;
-                          });
-                        }
-                      },
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(LucideIcons.scanLine, size: 18),
+                    label: const Text('Scan QR'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
+                      foregroundColor: AppTheme.primaryBlue,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text('OR', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
-                    ),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _deviceIdCtrl,
-                        decoration: const InputDecoration(
-                          hintText: 'Manual Entry',
-                          isDense: true,
-                        ),
-                        validator: (value) => value == null || value.isEmpty ? 'Required for telemetry' : null,
-                      ),
-                    ),
-                  ],
+                    onPressed: () async {
+                      final scannedId = await showDialog<String>(
+                        context: context,
+                        builder: (ctx) => const QrScannerDialog(),
+                      );
+                      if (scannedId != null && scannedId.isNotEmpty) {
+                        setState(() {
+                          _deviceIdCtrl.text = scannedId;
+                        });
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Center(
+                  child: Text('OR', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _deviceIdCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Manual Entry',
+                    isDense: true,
+                  ),
+                  validator: (value) => value == null || value.isEmpty ? 'Required for telemetry' : null,
                 ),
                 const SizedBox(height: 24),
                 const Text('Compliance Documents', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -807,6 +827,14 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
                 
                 _buildDateRow('PUC Expiry Date', _pucExpDate, (date) => setState(() => _pucExpDate = date)),
                 _buildUploadRow('PUC Certificate', _pucUploaded, _pucUploading, () => _pickAndUpload('puc')),
+
+                const Divider(height: 16),
+
+                _buildDateRow('Next Service Date', _nextServiceDate, (date) => setState(() => _nextServiceDate = date)),
+
+                const Divider(height: 16),
+
+                _buildDateRow('National Permit Expiry Date', _permitDate, (date) => setState(() => _permitDate = date)),
               ],
             ),
           ),
@@ -857,91 +885,197 @@ int calculateHealth(int regYear) {
 }
 
 class _VehicleDetailDrawer extends StatelessWidget {
-  final Vehicle vehicle;
+  final String vehiclePlate;
   final VoidCallback onClose;
-  final VoidCallback onDeactivate;
 
-  const _VehicleDetailDrawer({required this.vehicle, required this.onClose, required this.onDeactivate});
+  const _VehicleDetailDrawer({
+    required this.vehiclePlate,
+    required this.onClose,
+  });
 
-  Color _statusColor(String status, {required bool isActive}) {
-    if (!isActive) return AppTheme.textSecondary;
-    final normalized = status.trim().toLowerCase().replaceAll('_', ' ');
-    if (normalized == 'completed') return AppTheme.ecoGreen;
-    if (normalized == 'running') return Colors.blue;
-    if (normalized == 'idle' || normalized == 'pending' || normalized == 'not started') return Colors.orange;
-    if (normalized == 'cancelled') return AppTheme.danger;
-    if (normalized == 'offline') return AppTheme.textSecondary;
-    return AppTheme.textSecondary;
+  Color _headerColor(String status, bool isActive) {
+    if (!isActive) return Colors.grey.shade600;
+    final s = status.trim().toLowerCase();
+    if (s == 'running') return const Color(0xFF1565C0);
+    if (s == 'idle') return const Color(0xFFE65100);
+    if (s == 'offline') return const Color(0xFF455A64);
+    return AppTheme.primaryBlue;
   }
 
   @override
   Widget build(BuildContext context) {
+    if (vehiclePlate.isEmpty) return const SizedBox.shrink();
+    
+    final engine = context.watch<DataEngine>();
+    final vehicle = engine.vehicles.firstWhere(
+      (v) => v.plate == vehiclePlate,
+      orElse: () => Vehicle(
+        plate: '', deviceId: '', year: 2024, type: '', status: 'offline',
+        driver: '', loc: '', speed: 0, fuel: 0, mil: 0, idle: 0, fastag: 0,
+        health: 0, odo: 0, nextService: '', insurance: '', permit: '', puc: '',
+        lastFill: '', alerts: [], lat: 0, lng: 0,
+      ),
+    );
+
+    if (vehicle.plate.isEmpty) return const SizedBox.shrink();
+    final headerColor = _headerColor(vehicle.status, vehicle.isActive);
+    final healthVal = calculateHealth(vehicle.year);
+
     return Drawer(
-      width: 400,
+      width: 380,
       child: Column(
         children: [
+          // Header — color matches status
           Container(
-            padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
-            color: AppTheme.primaryBlue,
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [headerColor, headerColor.withOpacity(0.8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(vehicle.plate, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                    IconButton(onPressed: onClose, icon: const Icon(Icons.close, color: Colors.white)),
+                    const Icon(LucideIcons.truck, color: Colors.white, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        vehicle.plate,
+                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(onPressed: onClose, icon: const Icon(Icons.close, color: Colors.white, size: 20)),
                   ],
                 ),
-                Text(vehicle.type, style: TextStyle(color: Colors.white.withOpacity(0.8))),
-                const SizedBox(height: 16),
-                Row(
+                if (vehicle.type.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 32, top: 2),
+                    child: Text(vehicle.type, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13)),
+                  ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
                   children: [
-                    _Badge(label: vehicle.isActive ? vehicle.status.replaceAll('_', ' ').toUpperCase() : 'INACTIVE', color: _statusColor(vehicle.status, isActive: vehicle.isActive)),
-                    const SizedBox(width: 8),
-                    _Badge(label: 'Health: ${calculateHealth(vehicle.year)}%', color: calculateHealth(vehicle.year) > 70 ? AppTheme.success : AppTheme.warning),
+                    _whiteBadge(vehicle.status.toUpperCase()),
+                    _whiteBadge('Health: $healthVal%'),
                   ],
                 ),
               ],
             ),
           ),
+          // Body
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               children: [
-                const Text('COMPLIANCE & DOCUMENTS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
-                const SizedBox(height: 16),
-                _ComplianceRow(label: 'RC Registration', date: '${vehicle.year}', status: 'Valid', prefix: 'Date'),
-                _ComplianceRow(label: 'RC Expiry', date: '${vehicle.year + 15}', status: 'Valid'),
-                _ComplianceRow(label: 'Insurance', date: vehicle.insurance, status: 'Valid'),
-                _ComplianceRow(label: 'PUC', date: vehicle.puc, status: 'Valid'),
-                _ComplianceRow(label: 'Permit', date: vehicle.permit, status: 'Valid'),
-                _ComplianceRow(label: 'Next Service', date: vehicle.nextService, status: 'Due soon', isAlert: true),
-                const Divider(height: 48),
-                const Text('REAL-TIME STATS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
-                const SizedBox(height: 16),
-                _StatRow(label: 'Odometer', value: '${vehicle.odo} km', icon: LucideIcons.gauge),
-                _StatRow(label: 'Current Fuel', value: '${vehicle.fuel}%', icon: LucideIcons.fuel),
-                _StatRow(label: 'Last Fill', value: vehicle.lastFill, icon: LucideIcons.droplets),
-                _StatRow(label: 'Driver', value: vehicle.driver, icon: LucideIcons.user),
-                const Divider(height: 48),
-                const Text('SERVICE HISTORY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
-                const SizedBox(height: 12),
-                if (vehicle.serviceHistory.isEmpty)
-                  const Text('No recent service records.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13))
-                else
-                  ...vehicle.serviceHistory.map((s) => ListTile(title: Text(s.type), subtitle: Text(s.date), trailing: const Icon(LucideIcons.chevronRight, size: 14))),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () {}, 
-                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
-                  child: const Text('Schedule Maintenance')
+                _sectionLabel('COMPLIANCE & DOCUMENTS'),
+                _complianceRow('RC Registration', '${vehicle.year}', 'Year', false),
+                _complianceRow('Insurance', vehicle.insurance, 'Expires', _isExpiring(vehicle.insurance)),
+                _complianceRow('PUC', vehicle.puc, 'Expires', _isExpiring(vehicle.puc)),
+                _complianceRow('Permit', vehicle.permit, 'Expires', _isExpiring(vehicle.permit)),
+                _complianceRow('Next Service', vehicle.nextService, 'Due', _isExpiring(vehicle.nextService)),
+                const Divider(height: 36),
+                _sectionLabel('REAL-TIME STATS'),
+                _statRow(LucideIcons.gauge, 'Odometer', '${vehicle.odo} km'),
+                _statRow(LucideIcons.fuel, 'Current Fuel', '${vehicle.fuel}%'),
+                _statRow(LucideIcons.user, 'Assigned Driver', vehicle.driver.isNotEmpty && vehicle.driver != 'Unassigned' ? vehicle.driver : '—'),
+                _statRow(
+                  LucideIcons.mapPin,
+                  'Location',
+                  vehicle.lat != 0.0 && vehicle.lng != 0.0
+                      ? '${vehicle.lat.toStringAsFixed(5)}, ${vehicle.lng.toStringAsFixed(5)}'
+                      : (vehicle.loc.isNotEmpty && vehicle.loc != 'Depot' ? vehicle.loc : '—'),
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: onDeactivate, 
-                  style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
-                  child: const Text('Deactivate Vehicle')
+                const Divider(height: 36),
+                _sectionLabel('RECENT TRIPS'),
+                const SizedBox(height: 8),
+                (() {
+                  final vehicleTrips = engine.trips.where((t) => t.vehicle.trim().toUpperCase() == vehicle.plate.trim().toUpperCase()).toList();
+                  if (vehicleTrips.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: Text('No trips recorded for this vehicle.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                    );
+                  }
+                  return Column(
+                    children: vehicleTrips.take(5).map((t) {
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        elevation: 0,
+                        color: Colors.grey.shade50,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          title: Text('${t.from.isNotEmpty ? t.from : "—"} → ${t.to.isNotEmpty ? t.to : "—"}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          subtitle: Text('Driver: ${t.driver}  •  Status: ${t.status.toUpperCase()}', style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                          trailing: Text(
+                            '₹${t.moneyWasted.toStringAsFixed(0)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: t.moneyWasted > 0 ? AppTheme.danger : AppTheme.success,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                })(),
+                const Divider(height: 36),
+                _sectionLabel('SERVICE HISTORY'),
+                const SizedBox(height: 8),
+                if (vehicle.serviceHistory.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: Text('No service records yet.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                  )
+                else
+                  ...vehicle.serviceHistory.map((s) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(LucideIcons.wrench, size: 16, color: AppTheme.textSecondary),
+                    title: Text(s.type, style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(s.date, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  )),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now().add(const Duration(days: 7)),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      await engine.scheduleVehicleMaintenance(vehicle.plate, picked);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Maintenance scheduled for ${picked.day}/${picked.month}/${picked.year}'),
+                            backgroundColor: AppTheme.success,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 44),
+                  ),
+                  icon: const Icon(LucideIcons.calendar, size: 16),
+                  label: const Text('Schedule Maintenance'),
                 ),
               ],
             ),
@@ -949,6 +1083,81 @@ class _VehicleDetailDrawer extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _whiteBadge(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.white.withOpacity(0.4)),
+      ),
+      child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppTheme.textSecondary, letterSpacing: 0.5)),
+    );
+  }
+
+  Widget _statRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppTheme.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13))),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _complianceRow(String label, String date, String prefix, bool isAlert) {
+    final color = isAlert ? AppTheme.warning : AppTheme.success;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                Text('$prefix: ${date.isNotEmpty ? date : "—"}', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+            child: Text(isAlert ? 'Due Soon' : 'Valid', style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isExpiring(String dateStr) {
+    if (dateStr.isEmpty) return false;
+    try {
+      final date = DateTime.parse(dateStr);
+      return date.isBefore(DateTime.now().add(const Duration(days: 60)));
+    } catch (_) {
+      return false;
+    }
   }
 }
 

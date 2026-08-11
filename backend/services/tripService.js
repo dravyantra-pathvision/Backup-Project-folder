@@ -111,27 +111,28 @@ const createTrip = async (uid, data) => {
   }
   // compute mileage and fuel savings only when both distance and fuelUsed are provided
   // Ensure numeric variables exist even if client omits them
-  const distance = parseNumber(data.distance ?? data.distanceTraveled ?? data.distance_traveled ?? 0);
-  const liveSpeed = parseNumber(data.liveSpeed ?? data.live_speed ?? 0);
-  const fuelUsed = parseNumber(data.fuelUsed ?? data.fuel_used ?? 0);
+  const isNotStarted = (data.status === 'not started' || data.status === 'created');
+  const distance = isNotStarted ? 0.0 : parseNumber(data.distance ?? data.distanceTraveled ?? data.distance_traveled ?? 0);
+  const liveSpeed = isNotStarted ? 0.0 : parseNumber(data.liveSpeed ?? data.live_speed ?? 0);
+  const fuelUsed = isNotStarted ? 0.0 : parseNumber(data.fuelUsed ?? data.fuel_used ?? 0);
   let defaultMileage = parseNumber(data.defaultMileage ?? data.default_mileage ?? 4.0, 4.0);
   // Allow client to explicitly provide currentMileage in camelCase or snake_case.
-  let currentMileage = liveSpeed > 0
+  let currentMileage = isNotStarted ? 0.0 : (liveSpeed > 0
     ? getMileageFromLiveSpeed(liveSpeed)
     : ((data.currentMileage !== undefined || data.current_mileage !== undefined)
       ? parseNumber(data.currentMileage ?? data.current_mileage, 0.0)
-      : (fuelUsed > 0 ? (distance / fuelUsed) : 0.0));
-  let effectiveFuelUsed = (distance > 0 && currentMileage > 0)
+      : (fuelUsed > 0 ? (distance / fuelUsed) : 0.0)));
+  let effectiveFuelUsed = isNotStarted ? 0.0 : ((distance > 0 && currentMileage > 0)
     ? Number((distance / currentMileage).toFixed(2))
-    : fuelUsed;
+    : fuelUsed);
   let fuelSaved = 0.0;
   let fuelWasted = 0.0;
   let moneySaved = 0.0;
   let moneyWasted = 0.0;
-  let idleSeconds = getEffectiveIdleSeconds(data.status || 'not started', data, null);
-  let idleRupees = (idleSeconds / 3600) * IDLE_COST_PER_HOUR_RUPEES;
+  let idleSeconds = isNotStarted ? 0 : getEffectiveIdleSeconds(data.status || 'not started', data, null);
+  let idleRupees = isNotStarted ? 0.0 : (idleSeconds / 3600) * IDLE_COST_PER_HOUR_RUPEES;
   
-  if (distance > 0 && effectiveFuelUsed > 0) {
+  if (!isNotStarted && distance > 0 && effectiveFuelUsed > 0) {
     // Preserve client-supplied currentMileage when provided, otherwise derive from liveSpeed or distance/fuelUsed.
     defaultMileage = parseNumber(data.defaultMileage ?? data.default_mileage ?? 4.0, 4.0);
     const expectedFuel = defaultMileage > 0 ? distance / defaultMileage : 0.0;
@@ -255,25 +256,32 @@ const updateTrip = async (uid, id, data) => {
   const prev = prevRes.rows[0] || {};
   console.log(`updateTrip: id=${id} uid=${uid} incoming liveSpeed=${data.liveSpeed} prev.live_speed=${prev.live_speed || prev.liveSpeed}`);
   // compute mileage and fuel savings
-  const distance = parseNumber(data.distance ?? data.distanceTraveled ?? data.distance_traveled ?? current?.distance ?? 0);
-  const liveSpeed = parseNumber(data.liveSpeed ?? data.live_speed ?? current?.live_speed ?? 0);
-  const fuelUsed = parseNumber(data.fuelUsed ?? data.fuel_used ?? current?.fuel_used ?? 0);
+  const status = (typeof data.status === 'string' ? data.status : current?.status || 'not started');
+  const isNotStarted = (status === 'not started' || status === 'created');
+
+  const fsRes = await pool.query('SELECT fuel_price_per_liter FROM fleet_settings WHERE uid = $1', [uid]);
+  const fsRow = fsRes.rows[0];
+  const defaultPrice = fsRow && fsRow.fuel_price_per_liter ? Number(fsRow.fuel_price_per_liter) : 92.0;
+  const fuelPrice = Number(data.fuelPrice ?? data.fuel_price ?? current?.fuel_price ?? defaultPrice);
+
+  const distance = isNotStarted ? 0.0 : parseNumber(data.distance ?? data.distanceTraveled ?? data.distance_traveled ?? current?.distance ?? 0);
+  const liveSpeed = isNotStarted ? 0.0 : parseNumber(data.liveSpeed ?? data.live_speed ?? current?.live_speed ?? 0);
+  const fuelUsed = isNotStarted ? 0.0 : parseNumber(data.fuelUsed ?? data.fuel_used ?? current?.fuel_used ?? 0);
   const defaultMileage = parseNumber(data.defaultMileage ?? data.default_mileage ?? current?.default_mileage ?? 4.0, 4.0);
   const hasExplicitCurrentMileage = data.currentMileage !== undefined || data.current_mileage !== undefined;
   // Preserve an explicit client mileage update; otherwise derive from live speed when available.
-  const currentMileage = hasExplicitCurrentMileage
+  const currentMileage = isNotStarted ? 0.0 : (hasExplicitCurrentMileage
     ? parseNumber(data.currentMileage ?? data.current_mileage, 0.0)
     : (liveSpeed > 0
       ? getMileageFromLiveSpeed(liveSpeed)
-      : (current?.current_mileage ? Number(current?.current_mileage) : (fuelUsed > 0 ? distance / fuelUsed : 0.0)));
-  const effectiveFuelUsed = (distance > 0 && currentMileage > 0)
+      : (current?.current_mileage ? Number(current?.current_mileage) : (fuelUsed > 0 ? distance / fuelUsed : 0.0))));
+  const effectiveFuelUsed = isNotStarted ? 0.0 : ((distance > 0 && currentMileage > 0)
     ? Number((distance / currentMileage).toFixed(2))
-    : fuelUsed;
+    : fuelUsed);
   console.log('updateTrip debug:', { id, dataCurrentMileage: data.currentMileage, data_current_mileage: data.current_mileage, liveSpeed, currentMileage, distance, fuelUsed, effectiveFuelUsed, defaultMileage });
-  const expectedFuel = defaultMileage > 0 ? distance / defaultMileage : 0.0;
-  const fuelSaved = Math.max(0, expectedFuel - effectiveFuelUsed);
-  const fuelWastedMileage = Math.max(0, effectiveFuelUsed - expectedFuel);
-  const fuelPrice = Number(data.fuelPrice ?? data.fuel_price ?? current?.fuel_price ?? DEFAULT_FUEL_PRICE_RUPEES);
+  const expectedFuel = isNotStarted ? 0.0 : (defaultMileage > 0 ? distance / defaultMileage : 0.0);
+  const fuelSaved = isNotStarted ? 0.0 : Math.max(0, expectedFuel - effectiveFuelUsed);
+  const fuelWastedMileage = isNotStarted ? 0.0 : Math.max(0, effectiveFuelUsed - expectedFuel);
   const previousFuelCount = parseNumber(current?.live_fuel_count ?? current?.liveFuelCount ?? 0);
   const incomingFuelCountProvided = data.liveFuelCount !== undefined || data.live_fuel_count !== undefined;
   const incomingFuelCount = incomingFuelCountProvided
@@ -281,22 +289,21 @@ const updateTrip = async (uid, id, data) => {
     : previousFuelCount;
   const theftThreshold = getFleetFuelTheftThreshold();
   const theftDrop = Math.max(previousFuelCount - incomingFuelCount, 0);
-  const theftFuelLoss = incomingFuelCountProvided
-    ? (theftDrop >= theftThreshold ? Number(theftDrop.toFixed(2)) : 0.0)
-    : parseNumber(current?.theft_fuel_loss ?? current?.theftFuelLoss ?? 0);
-  const theftMoneyLoss = Number((theftFuelLoss * 100).toFixed(2));
-  const status = (typeof data.status === 'string' ? data.status : current?.status || 'not started');
-  const idleSeconds = getEffectiveIdleSeconds(status, data, current);
-  const idleRupees = (idleSeconds / 3600) * IDLE_COST_PER_HOUR_RUPEES;
-  const idleLiters = fuelPrice > 0 ? idleRupees / fuelPrice : 0.0;
-  const fuelWasted = fuelWastedMileage + idleLiters;
-  const moneySaved = (fuelSaved * fuelPrice) - idleRupees;
+  const theftFuelLoss = (isNotStarted || !incomingFuelCountProvided)
+    ? 0.0
+    : (theftDrop >= theftThreshold ? Number(theftDrop.toFixed(2)) : 0.0);
+  const theftMoneyLoss = isNotStarted ? 0.0 : Number((theftFuelLoss * 100).toFixed(2));
+  const idleSeconds = isNotStarted ? 0 : getEffectiveIdleSeconds(status, data, current);
+  const idleRupees = isNotStarted ? 0.0 : (idleSeconds / 3600) * IDLE_COST_PER_HOUR_RUPEES;
+  const idleLiters = (isNotStarted || fuelPrice <= 0) ? 0.0 : idleRupees / fuelPrice;
+  const fuelWasted = isNotStarted ? 0.0 : fuelWastedMileage + idleLiters;
+  const moneySaved = isNotStarted ? 0.0 : (fuelSaved * fuelPrice) - idleRupees;
   // money wasted = fuel wasted valued at fixed 100 rupees/liter + idle money (100 rupees per 60 minutes)
   const MONEY_WASTED_PER_LITER = 100;
-  const moneyWasted = (fuelWasted * MONEY_WASTED_PER_LITER) + idleRupees;
+  const moneyWasted = isNotStarted ? 0.0 : (fuelWasted * MONEY_WASTED_PER_LITER) + idleRupees;
 
   // compute speeding fuel wasted for update path as well
-  const speedingFuelWasted = calculateSpeedingFuelWasted(distance, currentMileage);
+  const speedingFuelWasted = isNotStarted ? 0.0 : calculateSpeedingFuelWasted(distance, currentMileage);
 
   // Preserve existing boolean fields (like power) when client omitted them
   const powerParam = (typeof data.power === 'boolean') ? data.power : prev.power;

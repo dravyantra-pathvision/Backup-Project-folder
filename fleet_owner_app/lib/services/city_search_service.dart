@@ -6,10 +6,7 @@ import '../models/city.dart';
 import 'indian_cities_data.dart';
 
 class CitySearchService {
-  // GeoDB Cities API on RapidAPI
-  static const String _baseUrl = 'https://wft-geo-db.p.rapidapi.com/v1/geo';
-  static const String _apiKey = 'YOUR_RAPIDAPI_KEY'; // Replace with your RapidAPI key
-  static const String _apiHost = 'wft-geo-db.p.rapidapi.com';
+  // GeoDB Cities API (reserved for future remote search integration)
 
   Timer? _debounceTimer;
   http.Client? _client;
