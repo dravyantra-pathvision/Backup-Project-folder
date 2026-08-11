@@ -9,13 +9,14 @@ const syncUser = async (req, res) => {
   try {
     const user = await userService.syncUser(uid, email, full_name, role);
     
-    // Log fleet owner login/sync
-    auditLogger.log({
-      req,
+    // Log fleet owner login/sync (fire-and-forget — don't block on failure)
+    auditLogger.logAuditEvent({
+      userUid: uid,
+      orgUid: uid,
       module: 'Fleet Owner',
       action: 'Fleet Owner Logged In',
       newValue: { uid, email, full_name, role }
-    });
+    }, req).catch(e => console.warn('Audit log error:', e.message));
 
     res.json({ message: 'User synced', user });
   } catch (err) {
