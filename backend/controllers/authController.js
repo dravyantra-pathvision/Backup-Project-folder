@@ -1,14 +1,13 @@
 const admin = require('../config/firebase');
 const notificationService = require('../services/notificationService');
 const jwt = require('jsonwebtoken');
+const { pool } = require('../config/dbconfig');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dravyantra_auth_verification_secret_key_2026';
 
 /**
- * Generates an email verification link using Firebase Admin SDK and
- * sends it via Nodemailer (custom SMTP) to ensure delivery from our domain.
- * 
- * Supports both:
- * 1. Authenticated requests (new signups with Bearer token) — uses token uid to find the user
- * 2. Unauthenticated requests (e.g. resend verification from settings)
+ * Sends custom email verification via Nodemailer SMTP.
+ * Bypasses Firebase rate limits by generating a secure backend JWT token if needed.
  */
 async function sendVerificationEmail(req, res) {
   const { email } = req.body;
@@ -19,49 +18,20 @@ async function sendVerificationEmail(req, res) {
 
   try {
     let link = '';
-    let userRecord = null;
 
-    // First, try to find user by UID from Bearer token
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const idToken = authHeader.split('Bearer ')[1];
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
-        const uid = decodedToken.uid;
-        if (uid) {
-          userRecord = await admin.auth().getUser(uid);
-          console.log(`[sendVerificationEmail] Found user by uid: ${uid}`);
-        }
-      } catch (tokenErr) {
-        console.warn(`[sendVerificationEmail] Token verification for uid failed, trying by email: ${tokenErr.message}`);
-      }
+    // Try generating native Firebase verification link first
+    try {
+      link = await admin.auth().generateEmailVerificationLink(email);
+      console.log(`[sendVerificationEmail] Generated Firebase verification link for ${email}`);
+    } catch (linkErr) {
+      console.warn(`[sendVerificationEmail] Firebase link notice (${linkErr.message}) - generating secure backend token link.`);
     }
 
-    // Retry loop to wait for Firebase Auth propagation (up to 5 attempts, 7.5s total)
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      try {
-        if (!userRecord) {
-          userRecord = await admin.auth().getUserByEmail(email);
-        }
-        if (userRecord) {
-          link = await admin.auth().generateEmailVerificationLink(email);
-          if (link && link.includes('oobCode')) {
-            console.log(`[sendVerificationEmail] Generated valid oobCode link on attempt ${attempt} for ${email}`);
-            break;
-          }
-        }
-      } catch (err) {
-        console.warn(`[sendVerificationEmail] Attempt ${attempt} notice for ${email}: ${err.message}`);
-      }
-      if (attempt < 5) {
-        await new Promise(r => setTimeout(r, 1500));
-      }
-    }
-
-    // ONLY send Nodemailer email if we have a valid, working Firebase oobCode link!
-    if (!link || !link.includes('oobCode')) {
-      console.warn(`[sendVerificationEmail] No valid oobCode link generated for ${email}. Native Firebase email is primary.`);
-      return res.status(200).json({ message: 'Native Firebase verification email requested.' });
+    // Fallback: If Firebase rate-limited or user not propagated yet, generate custom signed token link
+    if (!link) {
+      const customToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '24h' });
+      link = `https://16-112-99-7.nip.io/api/auth/verify-email?token=${customToken}`;
+      console.log(`[sendVerificationEmail] Generated custom backend verification link for ${email}`);
     }
 
     const subject = 'Action Required: Verify your DravYantra account';
@@ -89,7 +59,7 @@ async function sendVerificationEmail(req, res) {
               </p>
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${link}" target="_blank" style="background-color: #0047AB; color: #ffffff; display: inline-block; padding: 14px 32px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 15px;">
-                  Verify Email Address
+                  ✓ Verify Email Address
                 </a>
               </div>
               <p style="margin: 20px 0 8px 0; font-size: 12px; color: #64748b;">
@@ -113,15 +83,10 @@ async function sendVerificationEmail(req, res) {
       </html>
     `;
 
-    try {
-      await notificationService.sendEmail(email, subject, text, html);
-      console.log(`[sendVerificationEmail] Verification email sent via SMTP to ${email}`);
-    } catch (smtpErr) {
-      console.error(`[sendVerificationEmail] SMTP failed for ${email}:`, smtpErr.message);
-      return res.status(500).json({ error: 'Failed to send verification email via SMTP.' });
-    }
+    await notificationService.sendEmail(email, subject, text, html);
+    console.log(`[sendVerificationEmail] Verification email sent via Nodemailer SMTP to ${email}`);
 
-    return res.status(200).json({ message: 'Verification email sent successfully.', email });
+    return res.status(200).json({ success: true, message: 'Verification email sent successfully.', email });
 
   } catch (error) {
     console.error('sendVerificationEmail error:', error && error.message);
@@ -129,6 +94,84 @@ async function sendVerificationEmail(req, res) {
   }
 }
 
+/**
+ * Handles web verification when user clicks link in custom verification email.
+ */
+async function verifyEmailToken(req, res) {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).send('<h2>Invalid verification request: Missing token</h2>');
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const email = decoded.email;
+
+    if (!email) {
+      return res.status(400).send('<h2>Invalid verification token</h2>');
+    }
+
+    // 1. Update Firebase Auth user emailVerified flag
+    try {
+      const user = await admin.auth().getUserByEmail(email);
+      if (user) {
+        await admin.auth().updateUser(user.uid, { emailVerified: true });
+        console.log(`[verifyEmailToken] Firebase user ${email} marked as verified.`);
+      }
+    } catch (fbErr) {
+      console.warn(`[verifyEmailToken] Firebase update notice: ${fbErr.message}`);
+    }
+
+    // 2. Update PostgreSQL database
+    try {
+      await pool.query('UPDATE fleet_owners SET email_verified = true WHERE email = $1', [email]);
+      await pool.query('UPDATE users SET email_verified = true WHERE email = $1', [email]);
+    } catch (pgErr) {
+      console.warn(`[verifyEmailToken] PostgreSQL update notice: ${pgErr.message}`);
+    }
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Email Verified - DravYantra</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          .card { background: #1e293b; padding: 40px; border-radius: 16px; text-align: center; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+          .icon { font-size: 48px; margin-bottom: 16px; color: #22c55e; }
+          h2 { margin: 0 0 12px 0; color: #ffffff; }
+          p { color: #94a3b8; font-size: 15px; line-height: 1.5; margin-bottom: 24px; }
+          .btn { background: #0047AB; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: inline-block; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">✓</div>
+          <h2>Email Verified Successfully!</h2>
+          <p>Your email <strong>${email}</strong> has been verified. You can now return to the DravYantra app and log in.</p>
+        </div>
+      </body>
+      </html>
+    `);
+
+  } catch (err) {
+    console.error('[verifyEmailToken] Token verification failed:', err.message);
+    res.status(400).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Verification Link Expired</title></head>
+      <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h2>Link Expired or Invalid</h2>
+        <p>This verification link is invalid or has expired. Please request a new verification email from the DravYantra app.</p>
+      </body>
+      </html>
+    `);
+  }
+}
+
 module.exports = {
-  sendVerificationEmail
+  sendVerificationEmail,
+  verifyEmailToken
 };
