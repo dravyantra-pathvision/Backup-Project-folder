@@ -21,7 +21,7 @@ async function sendVerificationEmail(req, res) {
     let link = '';
     let userRecord = null;
 
-    // First, try to find user by UID from Bearer token (most reliable for new signups)
+    // First, try to find user by UID from Bearer token
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
@@ -37,63 +37,80 @@ async function sendVerificationEmail(req, res) {
       }
     }
 
-    // Fallback: find user by email address
-    if (!userRecord) {
-      try {
-        userRecord = await admin.auth().getUserByEmail(email);
-        console.log(`[sendVerificationEmail] Found user by email: ${email}`);
-      } catch (emailErr) {
-        if (emailErr.code !== 'auth/user-not-found') {
-          throw emailErr;
-        }
-        console.warn(`[sendVerificationEmail] User ${email} not found in Firebase Auth yet.`);
-      }
-    }
-
-    // Generate verification link with retry loop (handles new user propagation delay)
+    // Retry loop to wait for Firebase Auth propagation (up to 3 attempts, 2.5s total)
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        link = await admin.auth().generateEmailVerificationLink(email);
-        if (link) {
-          console.log(`[sendVerificationEmail] Generated verification link on attempt ${attempt} for ${email}`);
-          break;
+        if (!userRecord) {
+          userRecord = await admin.auth().getUserByEmail(email);
         }
-      } catch (linkErr) {
-        console.warn(`[sendVerificationEmail] Attempt ${attempt} generateEmailVerificationLink notice for ${email}: ${linkErr.message}`);
-        if (attempt < 3) {
-          await new Promise(r => setTimeout(r, 1200));
+        if (userRecord) {
+          link = await admin.auth().generateEmailVerificationLink(email);
+          if (link && link.includes('oobCode')) {
+            console.log(`[sendVerificationEmail] Generated valid oobCode link on attempt ${attempt} for ${email}`);
+            break;
+          }
         }
+      } catch (err) {
+        console.warn(`[sendVerificationEmail] Attempt ${attempt} notice for ${email}: ${err.message}`);
+      }
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 1200));
       }
     }
 
-    if (!link) {
-      link = 'https://dravyantra-7d2a1.firebaseapp.com';
+    // ONLY send Nodemailer email if we have a valid, working Firebase oobCode link!
+    if (!link || !link.includes('oobCode')) {
+      console.warn(`[sendVerificationEmail] No valid oobCode link generated for ${email}. Native Firebase email is primary.`);
+      return res.status(200).json({ message: 'Native Firebase verification email requested.' });
     }
 
-    const subject = 'Verify your email for DravYantra';
-    const text = `Welcome to DravYantra! Please verify your email by clicking the following link: ${link}`;
+    const subject = 'Action Required: Verify your DravYantra account';
+    const text = `Hello,\n\nPlease verify your email address for DravYantra by visiting:\n${link}\n\nThis link will expire in 24 hours.`;
     const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; color: #333;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #0047AB; margin: 0;">DravYantra</h1>
-          <p style="color: #666; margin-top: 5px;">Fleet Management System</p>
-        </div>
-        <h2>Verify your email address</h2>
-        <p>Hi there,</p>
-        <p>Thank you for signing up for DravYantra! Please verify your email address to complete your registration and access your fleet dashboard.</p>
-        <div style="text-align: center; margin: 35px 0;">
-          <a href="${link}" style="background-color: #0047AB; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">
-            ✓ Verify Email Address
-          </a>
-        </div>
-        <p style="font-size: 13px; color: #666;">If the button doesn't work, copy and paste this link into your browser:</p>
-        <p style="word-break: break-all; font-size: 12px; background: #f5f5f5; padding: 10px; border-radius: 4px;"><a href="${link}">${link}</a></p>
-        <hr style="margin-top: 40px; border: none; border-top: 1px solid #eee;" />
-        <p style="font-size: 12px; color: #999; text-align: center;">
-          This link expires in 24 hours. If you did not create a DravYantra account, please ignore this email.<br/>
-          © 2025 DravYantra - PathVision Technologies
-        </p>
-      </div>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #1e293b;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); overflow: hidden;">
+          <tr>
+            <td style="background-color: #0047AB; padding: 24px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">DravYantra</h1>
+              <p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 13px;">Fleet Management Platform</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 28px;">
+              <h2 style="margin: 0 0 16px 0; color: #0f172a; font-size: 20px; font-weight: 600;">Confirm your email address</h2>
+              <p style="margin: 0 0 20px 0; line-height: 1.6; color: #334155; font-size: 15px;">
+                Thank you for creating an account with DravYantra. Click the button below to verify your email address and activate your account.
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${link}" target="_blank" style="background-color: #0047AB; color: #ffffff; display: inline-block; padding: 14px 32px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 15px;">
+                  Verify Email Address
+                </a>
+              </div>
+              <p style="margin: 20px 0 8px 0; font-size: 12px; color: #64748b;">
+                If the button above does not work, copy and paste this link into your browser:
+              </p>
+              <p style="margin: 0; font-size: 12px; word-break: break-all; background: #f8fafc; padding: 10px 12px; border-radius: 6px; color: #2563eb;">
+                <a href="${link}" style="color: #2563eb; text-decoration: underline;">${link}</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f8fafc; padding: 20px 28px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                This link expires in 24 hours. If you did not sign up for DravYantra, please ignore this email.<br/>
+                &copy; 2026 DravYantra &bull; PathVision Technologies
+              </p>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
     `;
 
     try {
