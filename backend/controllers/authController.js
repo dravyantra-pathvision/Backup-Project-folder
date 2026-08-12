@@ -26,14 +26,14 @@ async function sendVerificationEmail(req, res) {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
         const idToken = authHeader.split('Bearer ')[1];
-        const decoded = jwt.decode(idToken);
-        const uid = decoded && (decoded.user_id || decoded.sub || decoded.uid);
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const uid = decodedToken.uid;
         if (uid) {
           userRecord = await admin.auth().getUser(uid);
           console.log(`[sendVerificationEmail] Found user by uid: ${uid}`);
         }
       } catch (tokenErr) {
-        console.warn(`[sendVerificationEmail] Token decode for uid failed, trying by email: ${tokenErr.message}`);
+        console.warn(`[sendVerificationEmail] Token verification for uid failed, trying by email: ${tokenErr.message}`);
       }
     }
 
