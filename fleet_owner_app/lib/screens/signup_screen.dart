@@ -77,6 +77,8 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (e) {
       debugPrint('Error launching legal web page: $e');
     }
+  }
+
   Future<void> _showVerificationPopupCard(String userEmail) async {
     return showDialog(
       context: context,
