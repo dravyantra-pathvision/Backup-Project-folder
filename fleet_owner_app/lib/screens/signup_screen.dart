@@ -77,6 +77,87 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (e) {
       debugPrint('Error launching legal web page: $e');
     }
+  Future<void> _showVerificationPopupCard(String userEmail) async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            width: 420,
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryBlue.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.mark_email_read_outlined, size: 36, color: AppTheme.primaryBlue),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Verify Your Email',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.5),
+                    children: [
+                      const TextSpan(text: 'A verification email has been sent to '),
+                      TextSpan(
+                        text: userEmail,
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
+                      ),
+                      const TextSpan(text: '. Please verify your email to create account.'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 2,
+                    ),
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                      if (mounted) {
+                        context.go('/login');
+                      }
+                    },
+                    icon: const Icon(Icons.arrow_back, size: 18),
+                    label: const Text('Go back to Login', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _handleSignup() async {
@@ -166,9 +247,7 @@ class _SignupScreenState extends State<SignupScreen> {
         }
 
         if (mounted) {
-          await DialogUtils.showSuccessAnimation(context, 'Account Created! Check email to verify.');
-          await FirebaseAuth.instance.signOut();
-          if (mounted) context.go('/login');
+          await _showVerificationPopupCard(_email.text.trim());
         }
       }
     } on FirebaseAuthException catch (e) {

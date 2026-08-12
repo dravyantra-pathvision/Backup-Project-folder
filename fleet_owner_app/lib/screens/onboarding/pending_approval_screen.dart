@@ -5,6 +5,8 @@ import '../../core/theme.dart';
 import '../../core/session_manager.dart';
 import '../../services/onboarding_service.dart';
 
+import 'dart:async';
+
 class PendingApprovalScreen extends StatefulWidget {
   const PendingApprovalScreen({super.key});
 
@@ -14,9 +16,26 @@ class PendingApprovalScreen extends StatefulWidget {
 
 class _PendingApprovalScreenState extends State<PendingApprovalScreen> {
   bool _isChecking = false;
+  Timer? _pollingTimer;
 
-  Future<void> _checkStatus() async {
-    setState(() => _isChecking = true);
+  @override
+  void initState() {
+    super.initState();
+    _startAutoPolling();
+  }
+
+  void _startAutoPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) => _checkStatus(silent: true));
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkStatus({bool silent = false}) async {
+    if (!silent) setState(() => _isChecking = true);
     try {
       final status = await OnboardingService.getStatus();
       final orgStatus = status['status'];
@@ -24,10 +43,12 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen> {
       if (!mounted) return;
       
       if (orgStatus == 'Approved') {
+        _pollingTimer?.cancel();
         context.go('/dashboard');
       } else if (orgStatus == 'Rejected') {
+        _pollingTimer?.cancel();
         context.go('/rejected');
-      } else {
+      } else if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Still pending approval.')),
         );
@@ -35,11 +56,12 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen> {
     } catch (e) {
       debugPrint('Error checking status: $e');
     } finally {
-      if (mounted) setState(() => _isChecking = false);
+      if (!silent && mounted) setState(() => _isChecking = false);
     }
   }
 
   Future<void> _logout() async {
+    _pollingTimer?.cancel();
     await SessionManager.clearSession();
     if (mounted) context.go('/login');
   }
