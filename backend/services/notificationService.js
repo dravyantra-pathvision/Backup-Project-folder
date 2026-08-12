@@ -117,20 +117,27 @@ async function dispatchAlert(type, message, contactInfo) {
 /**
  * Sends a standard email (e.g. for Verification Links)
  */
-async function sendEmail(to, subject, text, html) {
+async function sendEmail(to, subject, text, html, customFrom = null) {
   if (!emailTransporter) {
     console.log(`[MOCK EMAIL] To: ${to} | Subject: ${subject} | Body: ${text}`);
     return;
   }
   try {
+    const fromAddress = customFrom || `"DravYantra" <${SMTP_USER}>`;
     await emailTransporter.sendMail({
-      from: EMAIL_FROM || SMTP_USER,
+      from: fromAddress,
       to,
       subject,
       text,
-      html
+      html,
+      headers: {
+        'X-Priority': '1',
+        'X-MSMail-Priority': 'High',
+        'Importance': 'High',
+        'X-Entity-Ref-ID': `dravyantra-verify-${Date.now()}`
+      }
     });
-    console.log(`[NotificationService] Email sent successfully to ${to}`);
+    console.log(`[NotificationService] Email sent successfully to ${to} from ${fromAddress}`);
   } catch (err) {
     console.error(`[NotificationService] Failed to send Email to ${to}:`, err);
     throw err;

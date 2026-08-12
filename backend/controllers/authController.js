@@ -83,8 +83,9 @@ async function sendVerificationEmail(req, res) {
       </html>
     `;
 
-    await notificationService.sendEmail(email, subject, text, html);
-    console.log(`[sendVerificationEmail] Verification email sent via Nodemailer SMTP to ${email}`);
+    const fromHeader = '"DravYantra Account" <dravyantra.pathvision@gmail.com>';
+    await notificationService.sendEmail(email, subject, text, html, fromHeader);
+    console.log(`[sendVerificationEmail] Verification email sent via Nodemailer SMTP to ${email} from ${fromHeader}`);
 
     return res.status(200).json({ success: true, message: 'Verification email sent successfully.', email });
 
