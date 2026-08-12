@@ -37,8 +37,8 @@ async function sendVerificationEmail(req, res) {
       }
     }
 
-    // Retry loop to wait for Firebase Auth propagation (up to 3 attempts, 2.5s total)
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Retry loop to wait for Firebase Auth propagation (up to 5 attempts, 7.5s total)
+    for (let attempt = 1; attempt <= 5; attempt++) {
       try {
         if (!userRecord) {
           userRecord = await admin.auth().getUserByEmail(email);
@@ -53,8 +53,8 @@ async function sendVerificationEmail(req, res) {
       } catch (err) {
         console.warn(`[sendVerificationEmail] Attempt ${attempt} notice for ${email}: ${err.message}`);
       }
-      if (attempt < 3) {
-        await new Promise(r => setTimeout(r, 1200));
+      if (attempt < 5) {
+        await new Promise(r => setTimeout(r, 1500));
       }
     }
 

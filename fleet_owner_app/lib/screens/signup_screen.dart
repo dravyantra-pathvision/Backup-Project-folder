@@ -227,25 +227,32 @@ class _SignupScreenState extends State<SignupScreen> {
         }
 
         // 4. Custom backend verification email via SMTP
-        // Wait 2 seconds for Firebase to propagate the new user record
-        // before generating the verification link on the backend
+        // Wait 2 seconds for Firebase user record to propagate globally
         await Future.delayed(const Duration(seconds: 2));
         try {
           if (mounted) {
-            final freshToken = await user.getIdToken(true); // force refresh
+            String? authToken;
+            try {
+              authToken = await user.getIdToken();
+            } catch (tokenErr) {
+              debugPrint('Token fetch notice: $tokenErr');
+            }
+
             final baseUrl = Provider.of<DataEngine>(context, listen: false).baseUrl;
+            final headers = <String, String>{'Content-Type': 'application/json'};
+            if (authToken != null && authToken.isNotEmpty) {
+              headers['Authorization'] = 'Bearer $authToken';
+            }
+
             final verifyResp = await http.post(
               Uri.parse('$baseUrl/api/auth/send-verification'),
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $freshToken',
-              },
+              headers: headers,
               body: jsonEncode({'email': _email.text.trim()}),
             ).timeout(const Duration(seconds: 15));
             debugPrint('Verification email response: ${verifyResp.statusCode} ${verifyResp.body}');
           }
         } catch (e) {
-          debugPrint('Custom verification email fallback (native Firebase used instead): $e');
+          debugPrint('Custom verification email error: $e');
         }
 
         if (mounted) {
