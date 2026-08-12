@@ -123,9 +123,9 @@ async function update(trip, packet, gpsResult, fuelResult, idleResult, safetyRes
       [
         distanceDelta,
         newFuelUsed,
-        idleDeltaSec,
-        movingDeltaSec,
-        runningDeltaSec,
+        Math.round(idleDeltaSec    || 0),
+        Math.round(movingDeltaSec  || 0),
+        Math.round(runningDeltaSec || 0),
         newMaxSpeed,
         newCo2,
         newOverspeed,
