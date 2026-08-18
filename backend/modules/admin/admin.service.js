@@ -204,75 +204,67 @@ const hardDeleteFleetOwner = async (uid, adminId) => {
   try {
     await client.query('BEGIN');
     
+    const safeExec = async (sql, args = []) => {
+      try {
+        await client.query('SAVEPOINT sp');
+        await client.query(sql, args);
+        await client.query('RELEASE SAVEPOINT sp');
+      } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT sp');
+      }
+    };
+
     // 1. Organization audit logs
-    try {
-      await client.query(
-        'DELETE FROM organization_audit_logs WHERE organization_id IN (SELECT id FROM fleet_onboarding WHERE uid = $1)',
-        [uid]
-      );
-    } catch (e) { /* ignore if table missing or empty */ }
+    await safeExec(
+      'DELETE FROM organization_audit_logs WHERE organization_id IN (SELECT id FROM fleet_onboarding WHERE uid = $1)',
+      [uid]
+    );
 
     // 2. Vehicle audit logs & telemetry
-    try {
-      await client.query(
-        'DELETE FROM vehicle_audit_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-        [uid]
-      );
-    } catch (e) {}
-
-    try {
-      await client.query(
-        'DELETE FROM telemetry_history WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-        [uid]
-      );
-    } catch (e) {}
-
-    try {
-      await client.query(
-        'DELETE FROM live_telemetry WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-        [uid]
-      );
-    } catch (e) {}
+    await safeExec(
+      'DELETE FROM vehicle_audit_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+      [uid]
+    );
+    await safeExec(
+      'DELETE FROM telemetry_history WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+      [uid]
+    );
+    await safeExec(
+      'DELETE FROM live_telemetry WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+      [uid]
+    );
 
     // 3. Fuel logs
-    try {
-      await client.query('DELETE FROM fuel_logs WHERE uid = $1', [uid]);
-    } catch (e) {}
+    await safeExec('DELETE FROM fuel_logs WHERE uid = $1', [uid]);
 
     // 4. Support tickets & replies
-    try {
-      await client.query(
-        'DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE uid = $1)',
-        [uid]
-      );
-      await client.query('DELETE FROM support_tickets WHERE uid = $1', [uid]);
-    } catch (e) {}
+    await safeExec(
+      'DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE uid = $1)',
+      [uid]
+    );
+    await safeExec('DELETE FROM support_tickets WHERE uid = $1', [uid]);
 
     // 5. Reports & Schedules
-    try {
-      await client.query('DELETE FROM report_history WHERE uid = $1', [uid]);
-      await client.query('DELETE FROM report_schedules WHERE uid = $1', [uid]);
-    } catch (e) {}
+    await safeExec('DELETE FROM report_history WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM report_schedules WHERE uid = $1', [uid]);
 
     // 6. Unassign Devices
-    try {
-      await client.query(
-        'UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-        [uid]
-      );
-    } catch (e) {}
+    await safeExec(
+      'UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+      [uid]
+    );
 
     // 7. Activity logs, Fleet settings, Alerts, Trips
-    try { await client.query('DELETE FROM activity_logs WHERE user_id = $1', [uid]); } catch (e) {}
-    try { await client.query('DELETE FROM fleet_settings WHERE uid = $1', [uid]); } catch (e) {}
-    try { await client.query('DELETE FROM alerts WHERE uid = $1', [uid]); } catch (e) {}
-    try { await client.query('DELETE FROM trips WHERE uid = $1', [uid]); } catch (e) {}
+    await safeExec('DELETE FROM activity_logs WHERE user_id = $1', [uid]);
+    await safeExec('DELETE FROM fleet_settings WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM alerts WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM trips WHERE uid = $1', [uid]);
 
     // 8. Primary Entities: vehicles, drivers, onboarding, notifications
-    try { await client.query('DELETE FROM vehicles WHERE uid = $1', [uid]); } catch (e) {}
-    try { await client.query('DELETE FROM drivers WHERE uid = $1', [uid]); } catch (e) {}
-    try { await client.query('DELETE FROM fleet_onboarding WHERE uid = $1', [uid]); } catch (e) {}
-    try { await client.query('DELETE FROM notifications WHERE uid = $1', [uid]); } catch (e) {}
+    await safeExec('DELETE FROM vehicles WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM drivers WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM fleet_onboarding WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM notifications WHERE uid = $1', [uid]);
 
     // 9. Users Table
     await client.query('DELETE FROM users WHERE uid = $1', [uid]);
