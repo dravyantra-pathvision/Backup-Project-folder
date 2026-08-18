@@ -40,6 +40,7 @@ router.get('/fleetowners', adminController.getAllFleetOwners);
 router.get('/fleetowners/:uid', adminController.getFleetOwnerDetail);
 router.put('/fleetowners/:uid', adminController.updateFleetOwner);
 router.patch('/fleetowners/:uid/status', adminController.updateFleetOwnerStatus);
+router.delete('/fleetowners/:uid/permanent', adminController.deleteFleetOwnerPermanent);
 router.delete('/fleetowners/:uid', adminController.deleteFleetOwner);
 router.post('/fleetowners/:uid/reset-password', adminController.resetFleetOwnerPassword);
 

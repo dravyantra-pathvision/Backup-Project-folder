@@ -99,6 +99,9 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
   if (status) {
     where += ` AND u.account_status = $${idx}`;
     params.push(status); idx++;
+  } else {
+    // By default, exclude soft-deleted accounts unless status filter is explicitly requested
+    where += ` AND u.account_status != 'Deleted'`;
   }
 
   // orgStatus filter is kept for API flexibility but only applies within Approved orgs
@@ -113,8 +116,8 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
     params
   );
   const dataRes = await pool.query(
-    `SELECT u.uid, u.email, u.full_name, u.phone, u.created_at, u.account_status,
-            fo.id AS organization_id, fo.company_name, fo.city, fo.state, fo.fleet_size, fo.industry_type, fo.status AS organization_status,
+    `SELECT u.uid, u.email, u.full_name, COALESCE(u.phone, fo.contact_number) AS phone, u.created_at, u.account_status,
+            fo.id AS organization_id, fo.company_name, fo.contact_number, fo.city, fo.state, fo.pan, fo.gstin, fo.fleet_size, fo.industry_type, fo.status AS organization_status,
             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = u.uid) AS vehicle_count,
             (SELECT COUNT(*) FROM drivers d WHERE d.uid = u.uid) AS driver_count
      FROM users u
@@ -130,7 +133,7 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
 
 const getFleetOwnerDetail = async (uid) => {
   const [user, org, vehicles, drivers, trips, auditLogs] = await Promise.all([
-    pool.query(`SELECT uid, email, full_name, phone, role, created_at, account_status FROM users WHERE uid = $1`, [uid]),
+    pool.query(`SELECT uid, email, full_name, COALESCE(phone, (SELECT contact_number FROM fleet_onboarding WHERE uid = $1 LIMIT 1)) AS phone, role, created_at, account_status FROM users WHERE uid = $1`, [uid]),
     pool.query(`SELECT * FROM fleet_onboarding WHERE uid = $1`, [uid]),
     pool.query(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active=true) AS active FROM vehicles WHERE uid = $1`, [uid]),
     pool.query(`SELECT COUNT(*) AS total FROM drivers WHERE uid = $1`, [uid]),
@@ -196,6 +199,43 @@ const deleteFleetOwner = async (uid, adminId) => {
   return updateFleetOwnerStatus(uid, 'Deleted', adminId);
 };
 
+const hardDeleteFleetOwner = async (uid, adminId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const orgRes = await client.query('SELECT id FROM fleet_onboarding WHERE uid = $1', [uid]);
+    if (orgRes.rows.length > 0) {
+      const orgId = orgRes.rows[0].id;
+      await client.query('DELETE FROM organization_audit_logs WHERE organization_id = $1', [orgId]);
+    }
+    
+    await client.query('DELETE FROM fleet_onboarding WHERE uid = $1', [uid]);
+    await client.query('DELETE FROM vehicles WHERE uid = $1', [uid]);
+    await client.query('DELETE FROM drivers WHERE uid = $1', [uid]);
+    await client.query('DELETE FROM trips WHERE uid = $1', [uid]);
+    await client.query('DELETE FROM alerts WHERE uid = $1', [uid]);
+    await client.query('DELETE FROM notifications WHERE uid = $1', [uid]);
+    await client.query('DELETE FROM users WHERE uid = $1', [uid]);
+    
+    await client.query('COMMIT');
+    
+    try {
+      const adminFirebase = require('../../config/firebase');
+      await adminFirebase.auth().deleteUser(uid);
+    } catch (fbErr) {
+      console.warn(`Firebase user deletion warning for ${uid}:`, fbErr.message);
+    }
+    
+    return { success: true };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 const resetFleetOwnerPassword = async (uid) => {
   const adminFirebase = require('../../config/firebase');
   const userRes = await pool.query(`SELECT email FROM users WHERE uid = $1`, [uid]);
@@ -229,7 +269,7 @@ const getAllOrganizations = async ({ page, limit, search, status }) => {
 
   const countRes = await pool.query(`SELECT COUNT(*) FROM fleet_onboarding ${where}`, params);
   const dataRes  = await pool.query(
-    `SELECT fo.*, u.email, u.full_name, u.role,
+    `SELECT fo.*, u.email, u.full_name, COALESCE(u.phone, fo.contact_number) AS phone, u.role, u.account_status,
             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = fo.uid) AS vehicle_count,
             (SELECT COUNT(*) FROM drivers d WHERE d.uid = fo.uid) AS driver_count
      FROM fleet_onboarding fo
@@ -246,7 +286,7 @@ const getAllOrganizations = async ({ page, limit, search, status }) => {
 const getOrganizationDetail = async (uid) => {
   const [org, user, vehicles, drivers, trips] = await Promise.all([
     pool.query(`SELECT * FROM fleet_onboarding WHERE uid = $1`, [uid]),
-    pool.query(`SELECT uid, email, full_name, role, created_at FROM users WHERE uid = $1`, [uid]),
+    pool.query(`SELECT uid, email, full_name, COALESCE(phone, (SELECT contact_number FROM fleet_onboarding WHERE uid = $1 LIMIT 1)) AS phone, role, created_at, account_status FROM users WHERE uid = $1`, [uid]),
     pool.query(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status='active') AS active FROM vehicles WHERE uid = $1`, [uid]),
     pool.query(`SELECT COUNT(*) AS total FROM drivers WHERE uid = $1`, [uid]),
     pool.query(`SELECT COUNT(*) AS total FROM trips WHERE uid = $1`, [uid]),
@@ -470,6 +510,7 @@ module.exports = {
   updateFleetOwner,
   updateFleetOwnerStatus,
   deleteFleetOwner,
+  hardDeleteFleetOwner,
   resetFleetOwnerPassword,
   getAllOrganizations,
   getOrganizationDetail,

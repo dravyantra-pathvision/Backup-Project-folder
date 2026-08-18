@@ -78,9 +78,24 @@ const deleteFleetOwner = async (req, res) => {
       action: 'Deleted',
       newValue: { uid: req.params.uid }
     }, req);
-    res.json({ success: true, message: 'Fleet Owner deleted successfully' });
+    res.json({ success: true, message: 'Fleet Owner soft deleted successfully' });
   } catch (err) {
     handleError(res, 'Error deleting fleet owner', err);
+  }
+};
+
+const deleteFleetOwnerPermanent = async (req, res) => {
+  try {
+    await adminService.hardDeleteFleetOwner(req.params.uid, req.user.uid);
+    await logAuditEvent({
+      userUid: req.user.uid,
+      module: 'Fleet Owner',
+      action: 'Permanently Deleted',
+      newValue: { uid: req.params.uid }
+    }, req);
+    res.json({ success: true, message: 'Fleet Owner permanently deleted' });
+  } catch (err) {
+    handleError(res, 'Error permanently deleting fleet owner', err);
   }
 };
 
@@ -219,6 +234,7 @@ module.exports = {
   updateFleetOwner,
   updateFleetOwnerStatus,
   deleteFleetOwner,
+  deleteFleetOwnerPermanent,
   resetFleetOwnerPassword,
   getAllOrganizations,
   getOrganizationDetail,
