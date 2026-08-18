@@ -71,6 +71,17 @@ const updateFleetOwnerStatus = async (req, res) => {
 
 const deleteFleetOwner = async (req, res) => {
   try {
+    if (req.query.permanent === 'true') {
+      await adminService.hardDeleteFleetOwner(req.params.uid, req.user.uid);
+      await logAuditEvent({
+        userUid: req.user.uid,
+        module: 'Fleet Owner',
+        action: 'Permanently Deleted',
+        newValue: { uid: req.params.uid }
+      }, req);
+      return res.json({ success: true, message: 'Fleet Owner permanently deleted' });
+    }
+
     await adminService.deleteFleetOwner(req.params.uid, req.user.uid);
     await logAuditEvent({
       userUid: req.user.uid,
