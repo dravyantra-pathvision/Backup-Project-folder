@@ -204,22 +204,82 @@ const hardDeleteFleetOwner = async (uid, adminId) => {
   try {
     await client.query('BEGIN');
     
-    const orgRes = await client.query('SELECT id FROM fleet_onboarding WHERE uid = $1', [uid]);
-    if (orgRes.rows.length > 0) {
-      const orgId = orgRes.rows[0].id;
-      await client.query('DELETE FROM organization_audit_logs WHERE organization_id = $1', [orgId]);
-    }
-    
-    await client.query('DELETE FROM fleet_onboarding WHERE uid = $1', [uid]);
-    await client.query('DELETE FROM vehicles WHERE uid = $1', [uid]);
-    await client.query('DELETE FROM drivers WHERE uid = $1', [uid]);
-    await client.query('DELETE FROM trips WHERE uid = $1', [uid]);
-    await client.query('DELETE FROM alerts WHERE uid = $1', [uid]);
-    await client.query('DELETE FROM notifications WHERE uid = $1', [uid]);
+    // 1. Organization audit logs
+    try {
+      await client.query(
+        'DELETE FROM organization_audit_logs WHERE organization_id IN (SELECT id FROM fleet_onboarding WHERE uid = $1)',
+        [uid]
+      );
+    } catch (e) { /* ignore if table missing or empty */ }
+
+    // 2. Vehicle audit logs & telemetry
+    try {
+      await client.query(
+        'DELETE FROM vehicle_audit_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+        [uid]
+      );
+    } catch (e) {}
+
+    try {
+      await client.query(
+        'DELETE FROM telemetry_history WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+        [uid]
+      );
+    } catch (e) {}
+
+    try {
+      await client.query(
+        'DELETE FROM live_telemetry WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+        [uid]
+      );
+    } catch (e) {}
+
+    // 3. Fuel logs
+    try {
+      await client.query('DELETE FROM fuel_logs WHERE uid = $1', [uid]);
+    } catch (e) {}
+
+    // 4. Support tickets & replies
+    try {
+      await client.query(
+        'DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE uid = $1)',
+        [uid]
+      );
+      await client.query('DELETE FROM support_tickets WHERE uid = $1', [uid]);
+    } catch (e) {}
+
+    // 5. Reports & Schedules
+    try {
+      await client.query('DELETE FROM report_history WHERE uid = $1', [uid]);
+      await client.query('DELETE FROM report_schedules WHERE uid = $1', [uid]);
+    } catch (e) {}
+
+    // 6. Unassign Devices
+    try {
+      await client.query(
+        'UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
+        [uid]
+      );
+    } catch (e) {}
+
+    // 7. Activity logs, Fleet settings, Alerts, Trips
+    try { await client.query('DELETE FROM activity_logs WHERE user_id = $1', [uid]); } catch (e) {}
+    try { await client.query('DELETE FROM fleet_settings WHERE uid = $1', [uid]); } catch (e) {}
+    try { await client.query('DELETE FROM alerts WHERE uid = $1', [uid]); } catch (e) {}
+    try { await client.query('DELETE FROM trips WHERE uid = $1', [uid]); } catch (e) {}
+
+    // 8. Primary Entities: vehicles, drivers, onboarding, notifications
+    try { await client.query('DELETE FROM vehicles WHERE uid = $1', [uid]); } catch (e) {}
+    try { await client.query('DELETE FROM drivers WHERE uid = $1', [uid]); } catch (e) {}
+    try { await client.query('DELETE FROM fleet_onboarding WHERE uid = $1', [uid]); } catch (e) {}
+    try { await client.query('DELETE FROM notifications WHERE uid = $1', [uid]); } catch (e) {}
+
+    // 9. Users Table
     await client.query('DELETE FROM users WHERE uid = $1', [uid]);
     
     await client.query('COMMIT');
     
+    // 10. Firebase Auth User Deletion
     try {
       const adminFirebase = require('../../config/firebase');
       await adminFirebase.auth().deleteUser(uid);
@@ -230,6 +290,7 @@ const hardDeleteFleetOwner = async (uid, adminId) => {
     return { success: true };
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error(`Error in hardDeleteFleetOwner for ${uid}:`, err);
     throw err;
   } finally {
     client.release();
