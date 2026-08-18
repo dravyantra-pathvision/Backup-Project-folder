@@ -28,7 +28,7 @@ const getDashboardStats = async () => {
     recentOwnersRes
   ] = await Promise.all([
     pool.query(`SELECT COUNT(*) FROM fleet_onboarding`),
-    pool.query(`SELECT COUNT(*) FROM users WHERE role = 'fleet_owner'`),
+    pool.query(`SELECT COUNT(*) FROM users u INNER JOIN fleet_onboarding fo ON u.uid = fo.uid WHERE u.role = 'fleet_owner' AND fo.status = 'Approved'`),
     pool.query(`SELECT COUNT(*) FROM vehicles`),
     pool.query(`SELECT COUNT(*) FROM drivers`),
     pool.query(`SELECT COUNT(*) FROM trips WHERE trip_completed = false`),
@@ -53,13 +53,13 @@ const getDashboardStats = async () => {
       ORDER BY detected_at DESC LIMIT 5
     `),
 
-    // 5 most recent fleet owners
+    // 5 most recent fleet owners — only truly approved/onboarded owners
     pool.query(`
-      SELECT u.uid AS id, u.full_name AS name, u.email, COALESCE(f.company_name, 'N/A') AS organization, TO_CHAR(u.created_at, 'YYYY-MM-DD') AS "joinedDate", 'Active' AS status
+      SELECT u.uid AS id, u.full_name AS name, u.email, COALESCE(f.company_name, 'N/A') AS organization, TO_CHAR(u.created_at, 'YYYY-MM-DD') AS "joinedDate", f.status AS status
       FROM users u 
-      LEFT JOIN fleet_onboarding f ON u.uid = f.uid 
-      WHERE u.role = 'fleet_owner' 
-      ORDER BY u.created_at DESC LIMIT 5
+      INNER JOIN fleet_onboarding f ON u.uid = f.uid 
+      WHERE u.role = 'fleet_owner' AND f.status = 'Approved'
+      ORDER BY f.submission_date DESC LIMIT 5
     `)
   ]);
 
@@ -86,7 +86,9 @@ const getDashboardStats = async () => {
 const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => {
   const { offset } = paginate(page, limit);
   const params = [];
-  let where = `WHERE u.role = 'fleet_owner'`;
+  // Fleet Owners tab = users who are fully onboarded (org status = 'Approved').
+  // Users who are still in Draft / Pending / Rejected belong in the Organizations tab, not here.
+  let where = `WHERE u.role = 'fleet_owner' AND fo.status = 'Approved'`;
   let idx = 1;
 
   if (search) {
@@ -98,14 +100,16 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
     where += ` AND u.account_status = $${idx}`;
     params.push(status); idx++;
   }
-  
-  if (orgStatus) {
-    where += ` AND fo.status = $${idx}`;
-    params.push(orgStatus); idx++;
+
+  // orgStatus filter is kept for API flexibility but only applies within Approved orgs
+  if (orgStatus && orgStatus !== 'Approved') {
+    // If admin explicitly filters by a non-Approved org status, return empty
+    // (those belong in the Organizations tab)
+    return { data: [], total: 0, page, limit };
   }
 
   const countRes = await pool.query(
-    `SELECT COUNT(*) FROM users u LEFT JOIN fleet_onboarding fo ON u.uid = fo.uid ${where}`,
+    `SELECT COUNT(*) FROM users u INNER JOIN fleet_onboarding fo ON u.uid = fo.uid ${where}`,
     params
   );
   const dataRes = await pool.query(
@@ -114,9 +118,9 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = u.uid) AS vehicle_count,
             (SELECT COUNT(*) FROM drivers d WHERE d.uid = u.uid) AS driver_count
      FROM users u
-     LEFT JOIN fleet_onboarding fo ON u.uid = fo.uid
+     INNER JOIN fleet_onboarding fo ON u.uid = fo.uid
      ${where}
-     ORDER BY u.created_at DESC
+     ORDER BY fo.submission_date DESC
      LIMIT $${idx} OFFSET $${idx + 1}`,
     [...params, limit, offset]
   );

@@ -16,12 +16,13 @@ const requireApprovedOrg = async (req, res, next) => {
     );
 
     if (rows.length === 0) {
-      // Auto-create approved onboarding record for new fleet owners so they aren't locked out
-      await pool.query(
-        "INSERT INTO fleet_onboarding (uid, status, company_name) VALUES ($1, 'Approved', 'My Fleet') ON CONFLICT (uid) DO NOTHING",
-        [req.user.uid]
-      ).catch(e => console.warn('Auto onboarding insert warning:', e.message));
-      return next();
+      // No org profile submitted yet — user must complete the onboarding wizard first.
+      // Do NOT auto-approve: the correct flow is wizard → Pending Review → admin approves.
+      return res.status(403).json({
+        success: false,
+        message: 'Organization profile not submitted',
+        status: 'Draft'
+      });
     }
 
     if (rows[0].status !== 'Approved') {
