@@ -140,9 +140,12 @@ const reactivateVehicle = async (plate, adminId) => {
 };
 
 const softDeleteVehicle = async (identifier, adminId) => {
-  const checkRes = await pool.query(`SELECT status FROM vehicles WHERE id::text = $1 OR plate = $1`, [identifier]);
+  const checkRes = await pool.query(`SELECT is_deleted, status FROM vehicles WHERE id::text = $1 OR plate = $1`, [identifier]);
   if (checkRes.rows.length === 0) throw new Error('Vehicle not found');
-  const currentStatus = checkRes.rows[0].status;
+  const vRow = checkRes.rows[0];
+  if (vRow.is_deleted || vRow.status === 'Deleted') {
+    return { success: true, message: 'Vehicle is already in Recycle Bin' };
+  }
 
   const query = `UPDATE vehicles SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id::text = $1 OR plate = $1 RETURNING *`;
   const res = await pool.query(query, [identifier]);

@@ -177,9 +177,12 @@ const getDriversExport = async (filters) => {
 };
 
 const softDeleteDriver = async (id, adminId) => {
-  const checkRes = await pool.query(`SELECT status FROM drivers WHERE id = $1`, [id]);
+  const checkRes = await pool.query(`SELECT is_deleted, status FROM drivers WHERE id = $1`, [id]);
   if (checkRes.rows.length === 0) throw new Error('Driver not found');
-  const currentStatus = checkRes.rows[0].status;
+  const dRow = checkRes.rows[0];
+  if (dRow.is_deleted || dRow.status === 'Deleted') {
+    return { success: true, message: 'Driver is already in Recycle Bin' };
+  }
 
   const query = `UPDATE drivers SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
   const res = await pool.query(query, [id]);

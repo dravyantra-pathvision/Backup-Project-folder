@@ -160,9 +160,12 @@ const exportTrips = async ({ search, status, from_date, to_date }) => {
 };
 
 const softDeleteTrip = async (id, adminId) => {
-  const checkRes = await pool.query(`SELECT status FROM trips WHERE id = $1`, [id]);
+  const checkRes = await pool.query(`SELECT is_deleted, status FROM trips WHERE id = $1`, [id]);
   if (checkRes.rows.length === 0) throw new Error('Trip not found');
-  const currentStatus = checkRes.rows[0].status;
+  const tRow = checkRes.rows[0];
+  if (tRow.is_deleted || tRow.status === 'Deleted') {
+    return { success: true, message: 'Trip is already in Recycle Bin' };
+  }
 
   const query = `UPDATE trips SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
   const res = await pool.query(query, [id]);

@@ -223,9 +223,13 @@ const logSystemAudit = async ({ userUid, orgUid, module, action, oldValue, newVa
 };
 
 const deleteFleetOwner = async (uid, adminId) => {
-  const userRes = await pool.query(`SELECT account_status FROM users WHERE uid = $1`, [uid]);
+  const userRes = await pool.query(`SELECT is_deleted, account_status FROM users WHERE uid = $1`, [uid]);
   if (userRes.rows.length === 0) throw new Error('Fleet Owner not found');
-  const currentStatus = userRes.rows[0].account_status;
+  const userRow = userRes.rows[0];
+  if (userRow.is_deleted || userRow.account_status === 'Deleted') {
+    return { success: true, message: 'Fleet Owner is already in Recycle Bin' };
+  }
+  const currentStatus = userRow.account_status;
 
   await pool.query(
     `UPDATE users SET previous_status = account_status, account_status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`,
@@ -616,9 +620,13 @@ const getActivityLogs = async ({ page, limit }) => {
 };
 
 const softDeleteOrganization = async (id, adminId) => {
-  const orgRes = await pool.query(`SELECT status FROM fleet_onboarding WHERE id = $1 OR uid = $1`, [id]);
+  const orgRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id = $1 OR uid = $1`, [id]);
   if (orgRes.rows.length === 0) throw new Error('Organization not found');
-  const currentStatus = orgRes.rows[0].status;
+  const orgRow = orgRes.rows[0];
+  if (orgRow.is_deleted || orgRow.status === 'Deleted') {
+    return { success: true, message: 'Organization is already in Recycle Bin' };
+  }
+  const currentStatus = orgRow.status;
 
   await pool.query(
     `UPDATE fleet_onboarding SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1 OR uid = $1`,
