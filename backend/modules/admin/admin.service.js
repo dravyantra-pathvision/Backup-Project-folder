@@ -89,7 +89,7 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
   const params = [];
   // Fleet Owners tab = users who are fully onboarded (org status = 'Approved').
   // Users who are still in Draft / Pending / Rejected belong in the Organizations tab, not here.
-  let where = `WHERE u.role = 'fleet_owner' AND fo.status = 'Approved'`;
+  let where = `WHERE u.role = 'fleet_owner' AND (fo.status IS NULL OR fo.status = 'Approved' OR fo.status = 'active' OR fo.status = 'Active' OR fo.status != 'Deleted')`;
   let idx = 1;
 
   if (search) {
@@ -102,7 +102,7 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
     params.push(status); idx++;
   } else {
     // By default, exclude soft-deleted accounts unless status filter is explicitly requested
-    where += ` AND u.account_status != 'Deleted'`;
+    where += ` AND COALESCE(u.account_status, 'Active') != 'Deleted' AND COALESCE(u.is_deleted, false) = false`;
   }
 
   // orgStatus filter is kept for API flexibility but only applies within Approved orgs
@@ -113,7 +113,7 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
   }
 
   const countRes = await pool.query(
-    `SELECT COUNT(*) FROM users u INNER JOIN fleet_onboarding fo ON u.uid = fo.uid ${where}`,
+    `SELECT COUNT(*) FROM users u LEFT JOIN fleet_onboarding fo ON u.uid = fo.uid ${where}`,
     params
   );
   const dataRes = await pool.query(
@@ -122,9 +122,9 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = u.uid) AS vehicle_count,
             (SELECT COUNT(*) FROM drivers d WHERE d.uid = u.uid) AS driver_count
      FROM users u
-     INNER JOIN fleet_onboarding fo ON u.uid = fo.uid
+     LEFT JOIN fleet_onboarding fo ON u.uid = fo.uid
      ${where}
-     ORDER BY fo.submission_date DESC
+     ORDER BY u.created_at DESC
      LIMIT $${idx} OFFSET $${idx + 1}`,
     [...params, limit, offset]
   );
@@ -620,7 +620,7 @@ const getActivityLogs = async ({ page, limit }) => {
 };
 
 const softDeleteOrganization = async (id, adminId) => {
-  const orgRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id = $1 OR uid = $1`, [id]);
+  const orgRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id::text = $1 OR uid = $1`, [id]);
   if (orgRes.rows.length === 0) throw new Error('Organization not found');
   const orgRow = orgRes.rows[0];
   if (orgRow.is_deleted || orgRow.status === 'Deleted') {
@@ -663,7 +663,7 @@ const restoreOrganization = async (id, adminId) => {
 
 const hardDeleteOrganization = async (id, adminId) => {
   // Level 3 Guard Check: Verify organization is in Recycle Bin
-  const checkRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id = $1 OR uid = $1`, [id]);
+  const checkRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id::text = $1 OR uid = $1`, [id]);
   if (checkRes.rows.length === 0) throw new Error('Organization not found');
   const orgRow = checkRes.rows[0];
   if (!orgRow.is_deleted && orgRow.status !== 'Deleted') {
@@ -675,7 +675,7 @@ const hardDeleteOrganization = async (id, adminId) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM fleet_onboarding WHERE id = $1 OR uid = $1', [id]);
+    await client.query('DELETE FROM fleet_onboarding WHERE id::text = $1 OR uid = $1', [id]);
     await client.query('COMMIT');
 
     await logSystemAudit({
