@@ -135,11 +135,55 @@ const reactivateVehicle = async (plate, adminId) => {
   return res.rows[0];
 };
 
+const deleteVehiclePermanent = async (plate, adminId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const safeExec = async (sql, args = []) => {
+      try {
+        await client.query('SAVEPOINT sp');
+        await client.query(sql, args);
+        await client.query('RELEASE SAVEPOINT sp');
+      } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT sp');
+      }
+    };
+
+    // Get vehicle id first
+    const vRes = await client.query('SELECT id FROM vehicles WHERE plate = $1', [plate]);
+    if (vRes.rows.length === 0) throw new Error('Vehicle not found');
+    const vehicleId = vRes.rows[0].id;
+
+    // Cascade deletes
+    await safeExec('DELETE FROM vehicle_audit_logs WHERE vehicle_id = $1', [vehicleId]);
+    await safeExec('DELETE FROM telemetry_history WHERE vehicle_id = $1', [vehicleId]);
+    await safeExec('DELETE FROM live_telemetry WHERE vehicle_id = $1', [vehicleId]);
+    await safeExec('UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id = $1', [vehicleId]);
+    await safeExec('DELETE FROM alerts WHERE vehicle_plate = $1', [plate]);
+    await safeExec('DELETE FROM trips WHERE vehicle = $1', [plate]);
+    await safeExec('DELETE FROM fuel_logs WHERE vehicle_plate = $1', [plate]);
+
+    // Delete the vehicle
+    await client.query('DELETE FROM vehicles WHERE plate = $1', [plate]);
+
+    await client.query('COMMIT');
+    return { success: true };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   getAllVehicles,
   getVehicleDetail,
   getVehicleAuditLogs,
   blockVehicle,
   suspendVehicle,
-  reactivateVehicle
+  reactivateVehicle,
+  deleteVehiclePermanent,
 };
+

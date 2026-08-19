@@ -52,9 +52,28 @@ const exportTrips = async (req, res) => {
   }
 };
 
+const deleteTripPermanent = async (req, res) => {
+  try {
+    await tripsService.deleteTripPermanent(req.params.id, req.user?.uid);
+    res.json({ success: true, message: 'Trip permanently deleted' });
+  } catch (err) {
+    handleError(res, 'Error permanently deleting trip', err);
+  }
+};
+
+// Support ?permanent=true query param
+const deleteTrip = async (req, res) => {
+  if (req.query.permanent === 'true') {
+    return deleteTripPermanent(req, res);
+  }
+  res.status(400).json({ error: 'Use ?permanent=true or /permanent route to permanently delete a trip' });
+};
+
 module.exports = {
   getAllTrips,
   getTripById,
   getTripTimeline,
-  exportTrips
+  exportTrips,
+  deleteTrip,
+  deleteTripPermanent,
 };

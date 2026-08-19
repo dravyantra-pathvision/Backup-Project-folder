@@ -556,6 +556,67 @@ const getActivityLogs = async ({ page, limit }) => {
   }
 };
 
+const hardDeleteOrganization = async (id, adminId) => {
+  // id here is fleet_onboarding.id (org id)
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const safeExec = async (sql, args = []) => {
+      try {
+        await client.query('SAVEPOINT sp');
+        await client.query(sql, args);
+        await client.query('RELEASE SAVEPOINT sp');
+      } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT sp');
+      }
+    };
+
+    // Get the uid for this org
+    const orgRes = await client.query('SELECT uid FROM fleet_onboarding WHERE id = $1', [id]);
+    if (orgRes.rows.length === 0) throw new Error('Organization not found');
+    const uid = orgRes.rows[0].uid;
+
+    // Cascade deletes — same as hardDeleteFleetOwner but triggered by org id
+    await safeExec('DELETE FROM organization_audit_logs WHERE organization_id = $1', [id]);
+    await safeExec('DELETE FROM vehicle_audit_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
+    await safeExec('DELETE FROM telemetry_history WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
+    await safeExec('DELETE FROM live_telemetry WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
+    await safeExec('DELETE FROM fuel_logs WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE uid = $1)', [uid]);
+    await safeExec('DELETE FROM support_tickets WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM report_history WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM report_schedules WHERE uid = $1', [uid]);
+    await safeExec('UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
+    await safeExec('DELETE FROM activity_logs WHERE user_id = $1', [uid]);
+    await safeExec('DELETE FROM fleet_settings WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM alerts WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM trips WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM vehicles WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM drivers WHERE uid = $1', [uid]);
+    await safeExec('DELETE FROM notifications WHERE uid = $1', [uid]);
+    await client.query('DELETE FROM fleet_onboarding WHERE id = $1', [id]);
+    await safeExec('DELETE FROM users WHERE uid = $1', [uid]);
+
+    await client.query('COMMIT');
+
+    // Firebase cleanup
+    try {
+      const adminFirebase = require('../../config/firebase');
+      await adminFirebase.auth().deleteUser(uid);
+    } catch (fbErr) {
+      console.warn(`Firebase user deletion warning for ${uid}:`, fbErr.message);
+    }
+
+    return { success: true };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getAllFleetOwners,
@@ -564,6 +625,7 @@ module.exports = {
   updateFleetOwnerStatus,
   deleteFleetOwner,
   hardDeleteFleetOwner,
+  hardDeleteOrganization,
   resetFleetOwnerPassword,
   getAllOrganizations,
   getOrganizationDetail,
@@ -576,3 +638,4 @@ module.exports = {
   updateSettings,
   getActivityLogs,
 };
+

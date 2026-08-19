@@ -159,9 +159,44 @@ const exportTrips = async ({ search, status, from_date, to_date }) => {
   return parse(data);
 };
 
+const deleteTripPermanent = async (id, adminId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const safeExec = async (sql, args = []) => {
+      try {
+        await client.query('SAVEPOINT sp');
+        await client.query(sql, args);
+        await client.query('RELEASE SAVEPOINT sp');
+      } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT sp');
+      }
+    };
+
+    // Remove related data
+    await safeExec('DELETE FROM telemetry_history WHERE trip_id = $1', [id]);
+    await safeExec('DELETE FROM alerts WHERE trip_id = $1', [id]);
+    await safeExec('DELETE FROM fuel_logs WHERE trip_id = $1', [id]);
+
+    // Delete the trip
+    await client.query('DELETE FROM trips WHERE id = $1', [id]);
+
+    await client.query('COMMIT');
+    return { success: true };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   getAllTrips,
   getTripById,
   getTripTimeline,
-  exportTrips
+  exportTrips,
+  deleteTripPermanent,
 };
+

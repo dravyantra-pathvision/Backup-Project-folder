@@ -56,9 +56,29 @@ const exportDrivers = async (req, res) => {
   }
 };
 
+const deleteDriverPermanent = async (req, res) => {
+  try {
+    await driverService.deleteDriverPermanent(req.params.id, req.user?.uid);
+    res.status(200).json({ success: true, message: 'Driver permanently deleted' });
+  } catch (error) {
+    console.error('Error permanently deleting driver:', error);
+    res.status(500).json({ error: 'Failed to permanently delete driver' });
+  }
+};
+
+// Support ?permanent=true query param
+const deleteDriver = async (req, res) => {
+  if (req.query.permanent === 'true') {
+    return deleteDriverPermanent(req, res);
+  }
+  res.status(400).json({ error: 'Use ?permanent=true or /permanent route to permanently delete a driver' });
+};
+
 module.exports = {
   getAllDrivers,
   getDriverById,
   updateDriverStatus,
   exportDrivers,
+  deleteDriver,
+  deleteDriverPermanent,
 };

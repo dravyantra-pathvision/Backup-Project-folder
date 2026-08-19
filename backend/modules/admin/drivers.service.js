@@ -176,9 +176,45 @@ const getDriversExport = async (filters) => {
   return res.rows;
 };
 
+const deleteDriverPermanent = async (id, adminId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const safeExec = async (sql, args = []) => {
+      try {
+        await client.query('SAVEPOINT sp');
+        await client.query(sql, args);
+        await client.query('RELEASE SAVEPOINT sp');
+      } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT sp');
+      }
+    };
+
+    // Remove references
+    await safeExec('UPDATE vehicles SET driver_id = NULL WHERE driver_id = $1', [id]);
+    await safeExec('DELETE FROM trips WHERE driver = (SELECT name FROM drivers WHERE id = $1)', [id]);
+    await safeExec('DELETE FROM alerts WHERE driver_id = $1', [id]);
+    await safeExec('DELETE FROM activity_logs WHERE user_id = (SELECT uid FROM drivers WHERE id = $1)', [id]);
+
+    // Delete the driver
+    await client.query('DELETE FROM drivers WHERE id = $1', [id]);
+
+    await client.query('COMMIT');
+    return { success: true };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   getAllDrivers,
   getDriverById,
   updateDriverStatus,
   getDriversExport,
+  deleteDriverPermanent,
 };
+

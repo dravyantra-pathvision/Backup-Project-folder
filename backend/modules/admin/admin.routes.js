@@ -51,6 +51,8 @@ router.post('/organizations/:id/approve', adminController.approveOrganization);
 router.post('/organizations/:id/reject', adminController.rejectOrganization);
 router.post('/organizations/:id/suspend', adminController.suspendOrganization);
 router.post('/organizations/:id/reactivate', adminController.reactivateOrganization);
+router.delete('/organizations/:id/permanent', adminController.deleteOrganizationPermanent);
+router.delete('/organizations/:id', adminController.deleteOrganization);
 
 // ── Live Monitoring ───────────────────────────────────────────────────────────
 router.get('/live-dashboard', liveController.getLiveDashboard);
@@ -67,6 +69,8 @@ router.get('/vehicles/:id/logs', vehiclesController.getVehicleAuditLogs);
 router.post('/vehicles/:id/block', vehiclesController.blockVehicle);
 router.post('/vehicles/:id/suspend', vehiclesController.suspendVehicle);
 router.post('/vehicles/:id/reactivate', vehiclesController.reactivateVehicle);
+router.delete('/vehicles/:id/permanent', vehiclesController.deleteVehiclePermanent);
+router.delete('/vehicles/:id', vehiclesController.deleteVehicle);
 
 const reportsRoutes = require('./reports.routes');
 router.use('/reports-center', reportsRoutes);
@@ -78,6 +82,8 @@ router.get('/trips/export', tripsController.exportTrips);
 router.get('/trips/:id/timeline', tripsController.getTripTimeline);
 router.get('/trips/:id', tripsController.getTripById);
 router.get('/trips', tripsController.getAllTrips);
+router.delete('/trips/:id/permanent', tripsController.deleteTripPermanent);
+router.delete('/trips/:id', tripsController.deleteTrip);
 
 // ── Alerts & Incident Management ──────────────────────────────────────────────────────
 router.get('/alerts/statistics', alertsController.getAlertStatistics);
@@ -130,6 +136,8 @@ router.get('/drivers/export', driversController.exportDrivers);
 router.get('/drivers/:id', driversController.getDriverById);
 router.put('/drivers/:id/status', driversController.updateDriverStatus);
 router.get('/drivers', driversController.getAllDrivers);
+router.delete('/drivers/:id/permanent', driversController.deleteDriverPermanent);
+router.delete('/drivers/:id', driversController.deleteDriver);
 
 // ── Subscriptions & Billing ───────────────────────────────────────────────────
 const subscriptionsController = require('./subscriptions.controller');

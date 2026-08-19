@@ -162,6 +162,29 @@ const rejectOrganization = (req, res) => updateOrganizationStatus(req, res, 'Rej
 const suspendOrganization = (req, res) => updateOrganizationStatus(req, res, 'Suspended');
 const reactivateOrganization = (req, res) => updateOrganizationStatus(req, res, 'Approved');
 
+const deleteOrganizationPermanent = async (req, res) => {
+  try {
+    await adminService.hardDeleteOrganization(req.params.id, req.user.uid);
+    await logAuditEvent({
+      userUid: req.user.uid,
+      module: 'Organization',
+      action: 'Permanently Deleted',
+      newValue: { id: req.params.id }
+    }, req);
+    res.json({ success: true, message: 'Organization permanently deleted' });
+  } catch (err) {
+    handleError(res, 'Error permanently deleting organization', err);
+  }
+};
+
+// Support ?permanent=true query param as well
+const deleteOrganization = async (req, res) => {
+  if (req.query.permanent === 'true') {
+    return deleteOrganizationPermanent(req, res);
+  }
+  res.status(400).json({ error: 'Use ?permanent=true to delete an organization permanently' });
+};
+
 // ── Vehicles ──────────────────────────────────────────────────────────────────
 // Vehicle management has been moved to vehicles.controller.js and vehicles.service.js
 
@@ -253,6 +276,8 @@ module.exports = {
   rejectOrganization,
   suspendOrganization,
   reactivateOrganization,
+  deleteOrganization,
+  deleteOrganizationPermanent,
   getAllDrivers,
   getAllAlerts,
   getReports,
