@@ -8,7 +8,7 @@ const paginate = (page, limit) => ({
 
 const getAllVehicles = async ({ page, limit, search, type, fuelType, status, organization, fleetOwner }) => {
   const { offset } = paginate(page, limit);
-  const conditions = [];
+  const conditions = ['COALESCE(v.is_deleted, false) = false AND COALESCE(v.status, \'\') != \'Deleted\''];
   const params = [];
   let idx = 1;
 
@@ -177,6 +177,14 @@ const deleteVehiclePermanent = async (plate, adminId) => {
   }
 };
 
+const softDeleteVehicle = async (plate, adminId) => {
+  const query = `UPDATE vehicles SET is_deleted = true, status = 'Deleted', deleted_at = CURRENT_TIMESTAMP WHERE plate = $1 RETURNING *`;
+  const res = await pool.query(query, [plate]);
+  if (res.rows.length === 0) throw new Error('Vehicle not found');
+  await _logAction(plate, 'Moved to Recycle Bin', 'Admin Soft Delete', 'Vehicle moved to recycle bin by admin', adminId);
+  return res.rows[0];
+};
+
 module.exports = {
   getAllVehicles,
   getVehicleDetail,
@@ -184,6 +192,7 @@ module.exports = {
   blockVehicle,
   suspendVehicle,
   reactivateVehicle,
+  softDeleteVehicle,
   deleteVehiclePermanent,
 };
 

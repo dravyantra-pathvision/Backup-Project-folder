@@ -16,7 +16,7 @@ const getAllDrivers = async (filters, page = 1, limit = 10) => {
     FROM drivers d
     LEFT JOIN users u ON d.uid = u.uid
     LEFT JOIN fleet_onboarding f ON u.uid = f.uid
-    WHERE 1=1
+    WHERE COALESCE(d.is_deleted, false) = false AND COALESCE(d.status, '') != 'Deleted'
   `;
   const values = [];
   let index = 1;
@@ -210,11 +210,19 @@ const deleteDriverPermanent = async (id, adminId) => {
   }
 };
 
+const softDeleteDriver = async (id, adminId) => {
+  const query = `UPDATE drivers SET is_deleted = true, status = 'Deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
+  const res = await pool.query(query, [id]);
+  if (res.rows.length === 0) throw new Error('Driver not found');
+  return res.rows[0];
+};
+
 module.exports = {
   getAllDrivers,
   getDriverById,
   updateDriverStatus,
   getDriversExport,
+  softDeleteDriver,
   deleteDriverPermanent,
 };
 

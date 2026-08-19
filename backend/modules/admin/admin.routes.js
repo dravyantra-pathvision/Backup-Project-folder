@@ -160,4 +160,11 @@ router.post('/subscriptions/:id/extend-trial', subscriptionsController.extendTri
 router.post('/subscriptions/:id/cancel', subscriptionsController.cancelSubscription);
 router.get('/subscriptions', subscriptionsController.getAllSubscriptions);
 
+// ── Recycle Bin ───────────────────────────────────────────────────────────────
+const recycleBinController = require('./recycle_bin.controller');
+router.get('/recycle-bin', recycleBinController.getRecycledItems);
+router.post('/recycle-bin/restore', recycleBinController.restoreItem);
+router.delete('/recycle-bin/permanent', recycleBinController.hardDeleteItem);
+
 module.exports = router;
+

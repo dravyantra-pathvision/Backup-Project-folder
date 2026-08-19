@@ -66,12 +66,17 @@ const deleteDriverPermanent = async (req, res) => {
   }
 };
 
-// Support ?permanent=true query param
 const deleteDriver = async (req, res) => {
-  if (req.query.permanent === 'true') {
+  if (req.query.permanent === 'true' || req.body?.permanent === true) {
     return deleteDriverPermanent(req, res);
   }
-  res.status(400).json({ error: 'Use ?permanent=true or /permanent route to permanently delete a driver' });
+  try {
+    await driverService.softDeleteDriver(req.params.id, req.user?.uid);
+    res.status(200).json({ success: true, message: 'Driver moved to Recycle Bin' });
+  } catch (error) {
+    console.error('Error moving driver to Recycle Bin:', error);
+    res.status(500).json({ error: 'Failed to move driver to Recycle Bin' });
+  }
 };
 
 module.exports = {

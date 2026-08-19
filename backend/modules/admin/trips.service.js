@@ -9,7 +9,7 @@ const paginate = (page, limit) => ({
 const getAllTrips = async ({ page, limit, search, status, from_date, to_date }) => {
   const { offset } = paginate(page, limit);
   const params = [];
-  const conditions = [];
+  const conditions = ['COALESCE(t.is_deleted, false) = false AND COALESCE(t.status, \'\') != \'Deleted\''];
   let idx = 1;
 
   if (search) {
@@ -192,11 +192,19 @@ const deleteTripPermanent = async (id, adminId) => {
   }
 };
 
+const softDeleteTrip = async (id, adminId) => {
+  const query = `UPDATE trips SET is_deleted = true, status = 'Deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
+  const res = await pool.query(query, [id]);
+  if (res.rows.length === 0) throw new Error('Trip not found');
+  return res.rows[0];
+};
+
 module.exports = {
   getAllTrips,
   getTripById,
   getTripTimeline,
   exportTrips,
+  softDeleteTrip,
   deleteTripPermanent,
 };
 

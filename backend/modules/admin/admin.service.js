@@ -303,7 +303,7 @@ const resetFleetOwnerPassword = async (uid) => {
 const getAllOrganizations = async ({ page, limit, search, status }) => {
   const { offset } = paginate(page, limit);
   const params = [];
-  const conditions = [];
+  const conditions = ['COALESCE(is_deleted, false) = false AND COALESCE(status, \'\') != \'Deleted\''];
   let idx = 1;
 
   if (search) {
@@ -386,6 +386,19 @@ const updateOrganizationStatus = async (id, status, reason, adminId) => {
     [uid, `Organization ${status}`, `Your organization profile has been ${status.toLowerCase()}. ${reason ? 'Reason: ' + reason : ''}`, 'Organization']
   );
 
+  return result.rows[0];
+};
+
+const softDeleteOrganization = async (id, adminId) => {
+  const result = await pool.query(
+    `UPDATE fleet_onboarding SET is_deleted = true, status = 'Deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  if (result.rows.length === 0) throw new Error('Organization not found');
+  await pool.query(
+    `INSERT INTO organization_audit_logs (organization_id, action, admin_id, reason) VALUES ($1, $2, $3, $4)`,
+    [id, 'Moved to Recycle Bin', adminId, 'Organization moved to recycle bin']
+  );
   return result.rows[0];
 };
 
@@ -630,6 +643,7 @@ module.exports = {
   getAllOrganizations,
   getOrganizationDetail,
   updateOrganizationStatus,
+  softDeleteOrganization,
   getAllDrivers,
   getAllAlerts,
   getReports,

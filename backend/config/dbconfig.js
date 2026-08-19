@@ -590,6 +590,22 @@ const initDB = async () => {
     // Migrate old 'pending' status to 'New'
     await client.query(`UPDATE alerts SET status = 'New' WHERE status = 'pending';`);
 
+    // ── RECYCLE BIN MIGRATIONS: Add soft delete flags to core entities ───────
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+
+    await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+
+    await client.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+
+    await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+
     // ── ALERT AUDIT LOG ──────────────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS alert_audit_log (

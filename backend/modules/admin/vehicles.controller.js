@@ -80,12 +80,16 @@ const deleteVehiclePermanent = async (req, res) => {
   }
 };
 
-// Support ?permanent=true query param
 const deleteVehicle = async (req, res) => {
-  if (req.query.permanent === 'true') {
+  if (req.query.permanent === 'true' || req.body?.permanent === true) {
     return deleteVehiclePermanent(req, res);
   }
-  res.status(400).json({ error: 'Use ?permanent=true or /permanent route to permanently delete a vehicle' });
+  try {
+    await vehiclesService.softDeleteVehicle(req.params.id, req.user?.uid);
+    res.json({ success: true, message: 'Vehicle moved to Recycle Bin' });
+  } catch (err) {
+    handleError(res, 'Error moving vehicle to Recycle Bin', err);
+  }
 };
 
 module.exports = {

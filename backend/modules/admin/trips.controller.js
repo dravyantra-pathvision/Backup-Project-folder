@@ -61,12 +61,16 @@ const deleteTripPermanent = async (req, res) => {
   }
 };
 
-// Support ?permanent=true query param
 const deleteTrip = async (req, res) => {
-  if (req.query.permanent === 'true') {
+  if (req.query.permanent === 'true' || req.body?.permanent === true) {
     return deleteTripPermanent(req, res);
   }
-  res.status(400).json({ error: 'Use ?permanent=true or /permanent route to permanently delete a trip' });
+  try {
+    await tripsService.softDeleteTrip(req.params.id, req.user?.uid);
+    res.json({ success: true, message: 'Trip moved to Recycle Bin' });
+  } catch (err) {
+    handleError(res, 'Error moving trip to Recycle Bin', err);
+  }
 };
 
 module.exports = {

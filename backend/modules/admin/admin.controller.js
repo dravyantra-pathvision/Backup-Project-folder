@@ -177,12 +177,23 @@ const deleteOrganizationPermanent = async (req, res) => {
   }
 };
 
-// Support ?permanent=true query param as well
 const deleteOrganization = async (req, res) => {
-  if (req.query.permanent === 'true') {
+  if (req.query.permanent === 'true' || req.body?.permanent === true) {
     return deleteOrganizationPermanent(req, res);
   }
-  res.status(400).json({ error: 'Use ?permanent=true to delete an organization permanently' });
+  try {
+    await adminService.softDeleteOrganization(req.params.id, req.user.uid);
+    await logAuditEvent({
+      userUid: req.user.uid,
+      orgUid: req.params.id,
+      module: 'Organization',
+      action: 'Moved to Recycle Bin',
+      newValue: { id: req.params.id }
+    }, req);
+    res.json({ success: true, message: 'Organization moved to Recycle Bin' });
+  } catch (err) {
+    handleError(res, 'Error moving organization to Recycle Bin', err);
+  }
 };
 
 // ── Vehicles ──────────────────────────────────────────────────────────────────
