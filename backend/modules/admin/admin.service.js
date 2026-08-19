@@ -27,22 +27,23 @@ const getDashboardStats = async () => {
     recentAlertsRes,
     recentOwnersRes
   ] = await Promise.all([
-    pool.query(`SELECT COUNT(*) FROM fleet_onboarding`),
-    pool.query(`SELECT COUNT(*) FROM users u INNER JOIN fleet_onboarding fo ON u.uid = fo.uid WHERE u.role = 'fleet_owner' AND fo.status = 'Approved'`),
-    pool.query(`SELECT COUNT(*) FROM vehicles`),
-    pool.query(`SELECT COUNT(*) FROM drivers`),
-    pool.query(`SELECT COUNT(*) FROM trips WHERE trip_completed = false`),
-    pool.query(`SELECT COUNT(*) FROM vehicles WHERE is_active = true`),
+    pool.query(`SELECT COUNT(*) FROM fleet_onboarding WHERE COALESCE(is_deleted, false) = false AND COALESCE(status, '') != 'Deleted'`),
+    pool.query(`SELECT COUNT(*) FROM users u INNER JOIN fleet_onboarding fo ON u.uid = fo.uid WHERE u.role = 'fleet_owner' AND fo.status = 'Approved' AND COALESCE(u.is_deleted, false) = false AND COALESCE(u.account_status, '') != 'Deleted'`),
+    pool.query(`SELECT COUNT(*) FROM vehicles WHERE COALESCE(is_deleted, false) = false AND COALESCE(status, '') != 'Deleted'`),
+    pool.query(`SELECT COUNT(*) FROM drivers WHERE COALESCE(is_deleted, false) = false AND COALESCE(status, '') != 'Deleted'`),
+    pool.query(`SELECT COUNT(*) FROM trips WHERE trip_completed = false AND COALESCE(is_deleted, false) = false AND COALESCE(status, '') != 'Deleted'`),
+    pool.query(`SELECT COUNT(*) FROM vehicles WHERE is_active = true AND COALESCE(is_deleted, false) = false AND COALESCE(status, '') != 'Deleted'`),
     pool.query(`SELECT COUNT(*) FROM alerts WHERE severity = 'critical'`),
     pool.query(`SELECT COUNT(*) FROM report_schedules WHERE is_active = true`),
     
-    // 5 most recent organizations
+    // 5 most recent active organizations
     pool.query(`
       SELECT f.id, f.company_name AS name, u.email AS "adminEmail", 
-             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = f.uid) AS "vehicleCount", 
+             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = f.uid AND COALESCE(v.is_deleted, false) = false AND COALESCE(v.status, '') != 'Deleted') AS "vehicleCount", 
              'Active' AS status 
       FROM fleet_onboarding f 
       JOIN users u ON f.uid = u.uid 
+      WHERE COALESCE(f.is_deleted, false) = false AND COALESCE(f.status, '') != 'Deleted'
       ORDER BY f.created_at DESC LIMIT 5
     `),
 
@@ -53,13 +54,13 @@ const getDashboardStats = async () => {
       ORDER BY detected_at DESC LIMIT 5
     `),
 
-    // 5 most recent fleet owners — only truly approved/onboarded owners
+    // 5 most recent active fleet owners
     pool.query(`
       SELECT u.uid AS id, u.full_name AS name, u.email, COALESCE(f.company_name, 'N/A') AS organization, TO_CHAR(u.created_at, 'YYYY-MM-DD') AS "joinedDate", f.status AS status
       FROM users u 
       INNER JOIN fleet_onboarding f ON u.uid = f.uid 
-      WHERE u.role = 'fleet_owner' AND f.status = 'Approved'
-      ORDER BY f.submission_date DESC LIMIT 5
+      WHERE u.role = 'fleet_owner' AND f.status = 'Approved' AND COALESCE(u.is_deleted, false) = false AND COALESCE(u.account_status, '') != 'Deleted'
+      ORDER BY f.created_at DESC LIMIT 5
     `)
   ]);
 
