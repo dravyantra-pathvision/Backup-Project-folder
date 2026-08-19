@@ -170,6 +170,7 @@ const recycleBinController = require('./recycle_bin.controller');
 router.get('/recycle-bin', recycleBinController.getRecycledItems);
 router.post('/recycle-bin/restore', recycleBinController.restoreItem);
 router.delete('/recycle-bin/permanent', recycleBinController.hardDeleteItem);
+router.post('/recycle-bin/permanent', recycleBinController.hardDeleteItem);
 router.post('/recycle-bin/retry-firebase-cleanup', recycleBinController.retryFirebaseCleanup);
 
 module.exports = router;
