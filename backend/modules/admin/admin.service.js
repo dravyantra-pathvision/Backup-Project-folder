@@ -620,7 +620,7 @@ const getActivityLogs = async ({ page, limit }) => {
 };
 
 const softDeleteOrganization = async (id, adminId) => {
-  const orgRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id::text = $1 OR uid = $1`, [id]);
+  const orgRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id::text = $1::text OR uid = $1::text`, [String(id)]);
   if (orgRes.rows.length === 0) throw new Error('Organization not found');
   const orgRow = orgRes.rows[0];
   if (orgRow.is_deleted || orgRow.status === 'Deleted') {
@@ -629,8 +629,8 @@ const softDeleteOrganization = async (id, adminId) => {
   const currentStatus = orgRow.status;
 
   await pool.query(
-    `UPDATE fleet_onboarding SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1 OR uid = $1`,
-    [id]
+    `UPDATE fleet_onboarding SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id::text = $1::text OR uid = $1::text`,
+    [String(id)]
   );
 
   await logSystemAudit({
@@ -646,8 +646,8 @@ const softDeleteOrganization = async (id, adminId) => {
 
 const restoreOrganization = async (id, adminId) => {
   await pool.query(
-    `UPDATE fleet_onboarding SET status = COALESCE(previous_status, 'Approved'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE id = $1 OR uid = $1`,
-    [id]
+    `UPDATE fleet_onboarding SET status = COALESCE(previous_status, 'Approved'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE id::text = $1::text OR uid = $1::text`,
+    [String(id)]
   );
 
   await logSystemAudit({
@@ -663,7 +663,7 @@ const restoreOrganization = async (id, adminId) => {
 
 const hardDeleteOrganization = async (id, adminId) => {
   // Level 3 Guard Check: Verify organization is in Recycle Bin
-  const checkRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id::text = $1 OR uid = $1`, [id]);
+  const checkRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id::text = $1::text OR uid = $1::text`, [String(id)]);
   if (checkRes.rows.length === 0) throw new Error('Organization not found');
   const orgRow = checkRes.rows[0];
   if (!orgRow.is_deleted && orgRow.status !== 'Deleted') {
@@ -675,7 +675,7 @@ const hardDeleteOrganization = async (id, adminId) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM fleet_onboarding WHERE id::text = $1 OR uid = $1', [id]);
+    await client.query('DELETE FROM fleet_onboarding WHERE id::text = $1::text OR uid = $1::text', [String(id)]);
     await client.query('COMMIT');
 
     await logSystemAudit({
