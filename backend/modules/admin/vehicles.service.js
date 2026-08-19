@@ -140,14 +140,14 @@ const reactivateVehicle = async (plate, adminId) => {
 };
 
 const softDeleteVehicle = async (identifier, adminId) => {
-  const checkRes = await pool.query(`SELECT is_deleted, status FROM vehicles WHERE id::text = $1 OR plate = $1`, [identifier]);
+  const checkRes = await pool.query(`SELECT is_deleted, status FROM vehicles WHERE plate = $1`, [identifier]);
   if (checkRes.rows.length === 0) throw new Error('Vehicle not found');
   const vRow = checkRes.rows[0];
   if (vRow.is_deleted || vRow.status === 'Deleted') {
     return { success: true, message: 'Vehicle is already in Recycle Bin' };
   }
 
-  const query = `UPDATE vehicles SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id::text = $1 OR plate = $1 RETURNING *`;
+  const query = `UPDATE vehicles SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE plate = $1 RETURNING *`;
   const res = await pool.query(query, [identifier]);
   const plate = res.rows[0].plate;
 
@@ -156,7 +156,7 @@ const softDeleteVehicle = async (identifier, adminId) => {
 };
 
 const restoreVehicle = async (identifier, adminId) => {
-  const query = `UPDATE vehicles SET status = COALESCE(previous_status, 'Active'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE id::text = $1 OR plate = $1 RETURNING *`;
+  const query = `UPDATE vehicles SET status = COALESCE(previous_status, 'Active'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE plate = $1 RETURNING *`;
   const res = await pool.query(query, [identifier]);
   if (res.rows.length === 0) throw new Error('Vehicle not found');
   const plate = res.rows[0].plate;
@@ -167,7 +167,7 @@ const restoreVehicle = async (identifier, adminId) => {
 
 const deleteVehiclePermanent = async (identifier, adminId) => {
   // Level 3 Guard Check: Verify vehicle is in Recycle Bin
-  const checkRes = await pool.query(`SELECT id, plate, is_deleted, status FROM vehicles WHERE id::text = $1 OR plate = $1`, [identifier]);
+  const checkRes = await pool.query(`SELECT plate, is_deleted, status FROM vehicles WHERE plate = $1`, [identifier]);
   if (checkRes.rows.length === 0) throw new Error('Vehicle not found');
   const vRow = checkRes.rows[0];
   if (!vRow.is_deleted && vRow.status !== 'Deleted') {
@@ -183,8 +183,8 @@ const deleteVehiclePermanent = async (identifier, adminId) => {
     // 1. Unassign IoT device from vehicle (devices.assigned_vehicle -> SET NULL)
     await client.query(`UPDATE devices SET assigned_vehicle = NULL WHERE assigned_vehicle = $1`, [vRow.plate]);
 
-    // 2. Delete vehicle master record by primary key (id)
-    await client.query(`DELETE FROM vehicles WHERE id = $1`, [vRow.id]);
+    // 2. Delete vehicle master record by primary key (plate)
+    await client.query(`DELETE FROM vehicles WHERE plate = $1`, [vRow.plate]);
 
     await client.query('COMMIT');
     return { success: true, message: 'Vehicle master record permanently deleted. Historical telemetry retained.' };
