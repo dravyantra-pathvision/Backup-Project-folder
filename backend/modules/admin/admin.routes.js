@@ -40,6 +40,7 @@ router.get('/fleetowners', adminController.getAllFleetOwners);
 router.get('/fleetowners/:uid', adminController.getFleetOwnerDetail);
 router.put('/fleetowners/:uid', adminController.updateFleetOwner);
 router.patch('/fleetowners/:uid/status', adminController.updateFleetOwnerStatus);
+router.post('/fleetowners/:uid/restore', adminController.restoreFleetOwner);
 router.delete('/fleetowners/:uid/permanent', adminController.deleteFleetOwnerPermanent);
 router.delete('/fleetowners/:uid', adminController.deleteFleetOwner);
 router.post('/fleetowners/:uid/reset-password', adminController.resetFleetOwnerPassword);
@@ -51,6 +52,7 @@ router.post('/organizations/:id/approve', adminController.approveOrganization);
 router.post('/organizations/:id/reject', adminController.rejectOrganization);
 router.post('/organizations/:id/suspend', adminController.suspendOrganization);
 router.post('/organizations/:id/reactivate', adminController.reactivateOrganization);
+router.post('/organizations/:id/restore', adminController.restoreOrganization);
 router.delete('/organizations/:id/permanent', adminController.deleteOrganizationPermanent);
 router.delete('/organizations/:id', adminController.deleteOrganization);
 
@@ -69,6 +71,7 @@ router.get('/vehicles/:id/logs', vehiclesController.getVehicleAuditLogs);
 router.post('/vehicles/:id/block', vehiclesController.blockVehicle);
 router.post('/vehicles/:id/suspend', vehiclesController.suspendVehicle);
 router.post('/vehicles/:id/reactivate', vehiclesController.reactivateVehicle);
+router.post('/vehicles/:id/restore', vehiclesController.restoreVehicle);
 router.delete('/vehicles/:id/permanent', vehiclesController.deleteVehiclePermanent);
 router.delete('/vehicles/:id', vehiclesController.deleteVehicle);
 
@@ -82,6 +85,7 @@ router.get('/trips/export', tripsController.exportTrips);
 router.get('/trips/:id/timeline', tripsController.getTripTimeline);
 router.get('/trips/:id', tripsController.getTripById);
 router.get('/trips', tripsController.getAllTrips);
+router.post('/trips/:id/restore', tripsController.restoreTrip);
 router.delete('/trips/:id/permanent', tripsController.deleteTripPermanent);
 router.delete('/trips/:id', tripsController.deleteTrip);
 
@@ -136,6 +140,7 @@ router.get('/drivers/export', driversController.exportDrivers);
 router.get('/drivers/:id', driversController.getDriverById);
 router.put('/drivers/:id/status', driversController.updateDriverStatus);
 router.get('/drivers', driversController.getAllDrivers);
+router.post('/drivers/:id/restore', driversController.restoreDriver);
 router.delete('/drivers/:id/permanent', driversController.deleteDriverPermanent);
 router.delete('/drivers/:id', driversController.deleteDriver);
 
@@ -165,6 +170,7 @@ const recycleBinController = require('./recycle_bin.controller');
 router.get('/recycle-bin', recycleBinController.getRecycledItems);
 router.post('/recycle-bin/restore', recycleBinController.restoreItem);
 router.delete('/recycle-bin/permanent', recycleBinController.hardDeleteItem);
+router.post('/recycle-bin/retry-firebase-cleanup', recycleBinController.retryFirebaseCleanup);
 
 module.exports = router;
 

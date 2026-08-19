@@ -159,31 +159,43 @@ const exportTrips = async ({ search, status, from_date, to_date }) => {
   return parse(data);
 };
 
+const softDeleteTrip = async (id, adminId) => {
+  const checkRes = await pool.query(`SELECT status FROM trips WHERE id = $1`, [id]);
+  if (checkRes.rows.length === 0) throw new Error('Trip not found');
+  const currentStatus = checkRes.rows[0].status;
+
+  const query = `UPDATE trips SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
+  const res = await pool.query(query, [id]);
+  return res.rows[0];
+};
+
+const restoreTrip = async (id, adminId) => {
+  const query = `UPDATE trips SET status = COALESCE(previous_status, 'completed'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE id = $1 RETURNING *`;
+  const res = await pool.query(query, [id]);
+  if (res.rows.length === 0) throw new Error('Trip not found');
+  return res.rows[0];
+};
+
 const deleteTripPermanent = async (id, adminId) => {
+  // Level 3 Guard Check: Verify trip is in Recycle Bin
+  const checkRes = await pool.query(`SELECT id, is_deleted, status FROM trips WHERE id = $1`, [id]);
+  if (checkRes.rows.length === 0) throw new Error('Trip not found');
+  const tRow = checkRes.rows[0];
+  if (!tRow.is_deleted && tRow.status !== 'Deleted') {
+    const err = new Error('Trip must be moved to Recycle Bin before permanent deletion.');
+    err.statusCode = 409;
+    throw err;
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const safeExec = async (sql, args = []) => {
-      try {
-        await client.query('SAVEPOINT sp');
-        await client.query(sql, args);
-        await client.query('RELEASE SAVEPOINT sp');
-      } catch (e) {
-        await client.query('ROLLBACK TO SAVEPOINT sp');
-      }
-    };
-
-    // Remove related data
-    await safeExec('DELETE FROM telemetry_history WHERE trip_id = $1', [id]);
-    await safeExec('DELETE FROM alerts WHERE trip_id = $1', [id]);
-    await safeExec('DELETE FROM fuel_logs WHERE trip_id = $1', [id]);
-
-    // Delete the trip
+    // Delete trip record by id inside atomic transaction
     await client.query('DELETE FROM trips WHERE id = $1', [id]);
 
     await client.query('COMMIT');
-    return { success: true };
+    return { success: true, message: 'Trip permanently deleted' };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -192,19 +204,13 @@ const deleteTripPermanent = async (id, adminId) => {
   }
 };
 
-const softDeleteTrip = async (id, adminId) => {
-  const query = `UPDATE trips SET is_deleted = true, status = 'Deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`;
-  const res = await pool.query(query, [id]);
-  if (res.rows.length === 0) throw new Error('Trip not found');
-  return res.rows[0];
-};
-
 module.exports = {
   getAllTrips,
   getTripById,
   getTripTimeline,
   exportTrips,
   softDeleteTrip,
+  restoreTrip,
   deleteTripPermanent,
 };
 

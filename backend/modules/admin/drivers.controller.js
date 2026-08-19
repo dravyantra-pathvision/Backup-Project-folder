@@ -79,6 +79,16 @@ const deleteDriver = async (req, res) => {
   }
 };
 
+const restoreDriver = async (req, res) => {
+  try {
+    const data = await driverService.restoreDriver(req.params.id, req.user?.uid);
+    res.status(200).json({ success: true, message: 'Driver restored successfully', data });
+  } catch (error) {
+    console.error('Error restoring driver:', error);
+    res.status(500).json({ error: 'Failed to restore driver' });
+  }
+};
+
 module.exports = {
   getAllDrivers,
   getDriverById,
@@ -86,4 +96,5 @@ module.exports = {
   exportDrivers,
   deleteDriver,
   deleteDriverPermanent,
+  restoreDriver,
 };

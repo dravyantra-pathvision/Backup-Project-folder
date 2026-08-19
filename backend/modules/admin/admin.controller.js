@@ -95,16 +95,19 @@ const deleteFleetOwner = async (req, res) => {
   }
 };
 
+const restoreFleetOwner = async (req, res) => {
+  try {
+    const result = await adminService.restoreFleetOwner(req.params.uid, req.user.uid);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    handleError(res, 'Error restoring fleet owner', err);
+  }
+};
+
 const deleteFleetOwnerPermanent = async (req, res) => {
   try {
-    await adminService.hardDeleteFleetOwner(req.params.uid, req.user.uid);
-    await logAuditEvent({
-      userUid: req.user.uid,
-      module: 'Fleet Owner',
-      action: 'Permanently Deleted',
-      newValue: { uid: req.params.uid }
-    }, req);
-    res.json({ success: true, message: 'Fleet Owner permanently deleted' });
+    const result = await adminService.hardDeleteFleetOwner(req.params.uid, req.user.uid);
+    res.json(result);
   } catch (err) {
     handleError(res, 'Error permanently deleting fleet owner', err);
   }
@@ -177,19 +180,21 @@ const deleteOrganizationPermanent = async (req, res) => {
   }
 };
 
+const restoreOrganization = async (req, res) => {
+  try {
+    const result = await adminService.restoreOrganization(req.params.id, req.user.uid);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    handleError(res, 'Error restoring organization', err);
+  }
+};
+
 const deleteOrganization = async (req, res) => {
   if (req.query.permanent === 'true' || req.body?.permanent === true) {
     return deleteOrganizationPermanent(req, res);
   }
   try {
     await adminService.softDeleteOrganization(req.params.id, req.user.uid);
-    await logAuditEvent({
-      userUid: req.user.uid,
-      orgUid: req.params.id,
-      module: 'Organization',
-      action: 'Moved to Recycle Bin',
-      newValue: { id: req.params.id }
-    }, req);
     res.json({ success: true, message: 'Organization moved to Recycle Bin' });
   } catch (err) {
     handleError(res, 'Error moving organization to Recycle Bin', err);
@@ -279,6 +284,7 @@ module.exports = {
   updateFleetOwner,
   updateFleetOwnerStatus,
   deleteFleetOwner,
+  restoreFleetOwner,
   deleteFleetOwnerPermanent,
   resetFleetOwnerPassword,
   getAllOrganizations,
@@ -288,6 +294,7 @@ module.exports = {
   suspendOrganization,
   reactivateOrganization,
   deleteOrganization,
+  restoreOrganization,
   deleteOrganizationPermanent,
   getAllDrivers,
   getAllAlerts,

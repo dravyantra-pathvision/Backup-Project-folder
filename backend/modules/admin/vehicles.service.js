@@ -139,54 +139,58 @@ const reactivateVehicle = async (plate, adminId) => {
   return res.rows[0];
 };
 
-const deleteVehiclePermanent = async (plate, adminId) => {
+const softDeleteVehicle = async (identifier, adminId) => {
+  const checkRes = await pool.query(`SELECT status FROM vehicles WHERE id::text = $1 OR plate = $1`, [identifier]);
+  if (checkRes.rows.length === 0) throw new Error('Vehicle not found');
+  const currentStatus = checkRes.rows[0].status;
+
+  const query = `UPDATE vehicles SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id::text = $1 OR plate = $1 RETURNING *`;
+  const res = await pool.query(query, [identifier]);
+  const plate = res.rows[0].plate;
+
+  await _logAction(plate, 'Moved to Recycle Bin', 'Admin Soft Delete', 'Vehicle moved to recycle bin by admin', adminId);
+  return res.rows[0];
+};
+
+const restoreVehicle = async (identifier, adminId) => {
+  const query = `UPDATE vehicles SET status = COALESCE(previous_status, 'Active'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE id::text = $1 OR plate = $1 RETURNING *`;
+  const res = await pool.query(query, [identifier]);
+  if (res.rows.length === 0) throw new Error('Vehicle not found');
+  const plate = res.rows[0].plate;
+
+  await _logAction(plate, 'Restored', 'Admin Restore', 'Vehicle restored from recycle bin', adminId);
+  return res.rows[0];
+};
+
+const deleteVehiclePermanent = async (identifier, adminId) => {
+  // Level 3 Guard Check: Verify vehicle is in Recycle Bin
+  const checkRes = await pool.query(`SELECT id, plate, is_deleted, status FROM vehicles WHERE id::text = $1 OR plate = $1`, [identifier]);
+  if (checkRes.rows.length === 0) throw new Error('Vehicle not found');
+  const vRow = checkRes.rows[0];
+  if (!vRow.is_deleted && vRow.status !== 'Deleted') {
+    const err = new Error('Vehicle must be moved to Recycle Bin before permanent deletion.');
+    err.statusCode = 409;
+    throw err;
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const safeExec = async (sql, args = []) => {
-      try {
-        await client.query('SAVEPOINT sp');
-        await client.query(sql, args);
-        await client.query('RELEASE SAVEPOINT sp');
-      } catch (e) {
-        await client.query('ROLLBACK TO SAVEPOINT sp');
-      }
-    };
+    // 1. Unassign IoT device from vehicle (devices.assigned_vehicle -> SET NULL)
+    await client.query(`UPDATE devices SET assigned_vehicle = NULL WHERE assigned_vehicle = $1`, [vRow.plate]);
 
-    // Get vehicle id first
-    const vRes = await client.query('SELECT id FROM vehicles WHERE plate = $1', [plate]);
-    if (vRes.rows.length === 0) throw new Error('Vehicle not found');
-    const vehicleId = vRes.rows[0].id;
-
-    // Cascade deletes
-    await safeExec('DELETE FROM vehicle_audit_logs WHERE vehicle_id = $1', [vehicleId]);
-    await safeExec('DELETE FROM telemetry_history WHERE vehicle_id = $1', [vehicleId]);
-    await safeExec('DELETE FROM live_telemetry WHERE vehicle_id = $1', [vehicleId]);
-    await safeExec('UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id = $1', [vehicleId]);
-    await safeExec('DELETE FROM alerts WHERE vehicle_plate = $1', [plate]);
-    await safeExec('DELETE FROM trips WHERE vehicle = $1', [plate]);
-    await safeExec('DELETE FROM fuel_logs WHERE vehicle_plate = $1', [plate]);
-
-    // Delete the vehicle
-    await client.query('DELETE FROM vehicles WHERE plate = $1', [plate]);
+    // 2. Delete vehicle master record by primary key (id)
+    await client.query(`DELETE FROM vehicles WHERE id = $1`, [vRow.id]);
 
     await client.query('COMMIT');
-    return { success: true };
+    return { success: true, message: 'Vehicle master record permanently deleted. Historical telemetry retained.' };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
-};
-
-const softDeleteVehicle = async (plate, adminId) => {
-  const query = `UPDATE vehicles SET is_deleted = true, status = 'Deleted', deleted_at = CURRENT_TIMESTAMP WHERE plate = $1 RETURNING *`;
-  const res = await pool.query(query, [plate]);
-  if (res.rows.length === 0) throw new Error('Vehicle not found');
-  await _logAction(plate, 'Moved to Recycle Bin', 'Admin Soft Delete', 'Vehicle moved to recycle bin by admin', adminId);
-  return res.rows[0];
 };
 
 module.exports = {
@@ -197,6 +201,7 @@ module.exports = {
   suspendVehicle,
   reactivateVehicle,
   softDeleteVehicle,
+  restoreVehicle,
   deleteVehiclePermanent,
 };
 

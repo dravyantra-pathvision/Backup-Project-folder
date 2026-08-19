@@ -196,97 +196,155 @@ const updateFleetOwnerStatus = async (uid, status, adminId) => {
   return userRes.rows[0];
 };
 
+const logSystemAudit = async ({ userUid, orgUid, module, action, oldValue, newValue, ipAddress, browser }) => {
+  try {
+    let validUid = null;
+    if (userUid) {
+      const uCheck = await pool.query('SELECT uid FROM users WHERE uid = $1', [userUid]);
+      if (uCheck.rows.length > 0) validUid = userUid;
+    }
+    await pool.query(
+      `INSERT INTO system_audit_logs (user_uid, org_uid, module, action, old_value, new_value, ip_address, browser)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        validUid,
+        orgUid || null,
+        module,
+        action,
+        oldValue ? JSON.stringify(oldValue) : null,
+        newValue ? JSON.stringify(newValue) : null,
+        ipAddress || '127.0.0.1',
+        browser || 'DravYantra Admin Portal'
+      ]
+    );
+  } catch (e) {
+    console.warn('System audit log insertion warning:', e.message);
+  }
+};
+
 const deleteFleetOwner = async (uid, adminId) => {
-  return updateFleetOwnerStatus(uid, 'Deleted', adminId);
+  const userRes = await pool.query(`SELECT account_status FROM users WHERE uid = $1`, [uid]);
+  if (userRes.rows.length === 0) throw new Error('Fleet Owner not found');
+  const currentStatus = userRes.rows[0].account_status;
+
+  await pool.query(
+    `UPDATE users SET previous_status = account_status, account_status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`,
+    [uid]
+  );
+  await pool.query(
+    `UPDATE fleet_onboarding SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`,
+    [uid]
+  );
+
+  // Soft delete associated vehicles, drivers, trips
+  await pool.query(`UPDATE vehicles SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`, [uid]);
+  await pool.query(`UPDATE drivers SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`, [uid]);
+  await pool.query(`UPDATE trips SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`, [uid]);
+
+  await logSystemAudit({
+    userUid: uid,
+    module: 'FLEET_OWNER',
+    action: 'FLEET_OWNER_SOFT_DELETE',
+    oldValue: { status: currentStatus },
+    newValue: { status: 'Deleted', is_deleted: true },
+  });
+
+  return { success: true, message: 'Fleet Owner moved to Recycle Bin' };
+};
+
+const restoreFleetOwner = async (uid, adminId) => {
+  const userRes = await pool.query(`SELECT previous_status FROM users WHERE uid = $1`, [uid]);
+  if (userRes.rows.length === 0) throw new Error('Fleet Owner not found');
+
+  await pool.query(
+    `UPDATE users SET account_status = COALESCE(previous_status, 'Active'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE uid = $1`,
+    [uid]
+  );
+  await pool.query(
+    `UPDATE fleet_onboarding SET status = COALESCE(previous_status, 'Approved'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE uid = $1`,
+    [uid]
+  );
+
+  // Restore associated vehicles, drivers, trips
+  await pool.query(`UPDATE vehicles SET status = COALESCE(previous_status, 'active'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE uid = $1`, [uid]);
+  await pool.query(`UPDATE drivers SET status = COALESCE(previous_status, 'idle'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE uid = $1`, [uid]);
+  await pool.query(`UPDATE trips SET status = COALESCE(previous_status, 'completed'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE uid = $1`, [uid]);
+
+  await logSystemAudit({
+    userUid: uid,
+    module: 'FLEET_OWNER',
+    action: 'FLEET_OWNER_RESTORE',
+    oldValue: { is_deleted: true },
+    newValue: { is_deleted: false, status: 'Active' },
+  });
+
+  return { success: true, message: 'Fleet Owner restored to active status' };
 };
 
 const hardDeleteFleetOwner = async (uid, adminId) => {
+  // Level 3 Guard: Verify entity is in Recycle Bin (is_deleted = true or account_status = 'Deleted')
+  const checkRes = await pool.query(`SELECT is_deleted, account_status FROM users WHERE uid = $1`, [uid]);
+  if (checkRes.rows.length === 0) throw new Error('Fleet Owner not found');
+  const userRow = checkRes.rows[0];
+  if (!userRow.is_deleted && userRow.account_status !== 'Deleted') {
+    const err = new Error('Fleet Owner must be moved to Recycle Bin before permanent deletion.');
+    err.statusCode = 409;
+    throw err;
+  }
+
   const client = await pool.connect();
+  let dbSuccess = false;
   try {
     await client.query('BEGIN');
     
-    const safeExec = async (sql, args = []) => {
-      try {
-        await client.query('SAVEPOINT sp');
-        await client.query(sql, args);
-        await client.query('RELEASE SAVEPOINT sp');
-      } catch (e) {
-        await client.query('ROLLBACK TO SAVEPOINT sp');
-      }
-    };
-
-    // 1. Organization audit logs
-    await safeExec(
-      'DELETE FROM organization_audit_logs WHERE organization_id IN (SELECT id FROM fleet_onboarding WHERE uid = $1)',
-      [uid]
-    );
-
-    // 2. Vehicle audit logs & telemetry
-    await safeExec(
-      'DELETE FROM vehicle_audit_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-      [uid]
-    );
-    await safeExec(
-      'DELETE FROM telemetry_history WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-      [uid]
-    );
-    await safeExec(
-      'DELETE FROM live_telemetry WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-      [uid]
-    );
-
-    // 3. Fuel logs
-    await safeExec('DELETE FROM fuel_logs WHERE uid = $1', [uid]);
-
-    // 4. Support tickets & replies
-    await safeExec(
-      'DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE uid = $1)',
-      [uid]
-    );
-    await safeExec('DELETE FROM support_tickets WHERE uid = $1', [uid]);
-
-    // 5. Reports & Schedules
-    await safeExec('DELETE FROM report_history WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM report_schedules WHERE uid = $1', [uid]);
-
-    // 6. Unassign Devices
-    await safeExec(
-      'UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)',
-      [uid]
-    );
-
-    // 7. Activity logs, Fleet settings, Alerts, Trips
-    await safeExec('DELETE FROM activity_logs WHERE user_id = $1', [uid]);
-    await safeExec('DELETE FROM fleet_settings WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM alerts WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM trips WHERE uid = $1', [uid]);
-
-    // 8. Primary Entities: vehicles, drivers, onboarding, notifications
-    await safeExec('DELETE FROM vehicles WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM drivers WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM fleet_onboarding WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM notifications WHERE uid = $1', [uid]);
-
-    // 9. Users Table
+    // Deleting users.uid automatically cascades to fleet_onboarding, vehicles, drivers, trips, fuel_logs, alerts.
+    // Devices assigned to vehicles are unassigned (assigned_vehicle = NULL).
+    // Audit logs (system_audit_logs, organization_audit_logs, device_audit_logs) are retained via ON DELETE SET NULL.
     await client.query('DELETE FROM users WHERE uid = $1', [uid]);
-    
     await client.query('COMMIT');
-    
-    // 10. Firebase Auth User Deletion
-    try {
-      const adminFirebase = require('../../config/firebase');
-      await adminFirebase.auth().deleteUser(uid);
-    } catch (fbErr) {
-      console.warn(`Firebase user deletion warning for ${uid}:`, fbErr.message);
-    }
-    
-    return { success: true };
+    dbSuccess = true;
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error(`Error in hardDeleteFleetOwner for ${uid}:`, err);
     throw err;
   } finally {
     client.release();
+  }
+
+  // Phase 2: Firebase Admin SDK Deletion
+  let firebaseSuccess = false;
+  try {
+    const adminFirebase = require('../../config/firebase');
+    await adminFirebase.auth().deleteUser(uid);
+    firebaseSuccess = true;
+  } catch (fbErr) {
+    console.warn(`Firebase user deletion warning for ${uid}:`, fbErr.message);
+  }
+
+  if (firebaseSuccess) {
+    await logSystemAudit({
+      userUid: uid,
+      module: 'FLEET_OWNER',
+      action: 'FLEET_OWNER_PERMANENT_DELETE',
+      oldValue: { is_deleted: true },
+      newValue: { purged: true, firebase: 'DELETED' },
+    });
+    return { success: true, message: 'Fleet Owner permanently deleted from database & Firebase.' };
+  } else {
+    // Record REQUIRES_CLEANUP state in audit log if Firebase deletion fails
+    await logSystemAudit({
+      userUid: uid,
+      module: 'FLEET_OWNER',
+      action: 'FLEET_OWNER_PURGE_FIREBASE_FAILED',
+      oldValue: { is_deleted: true },
+      newValue: { purged: true, firebaseStatus: 'REQUIRES_CLEANUP', uid },
+    });
+    return {
+      success: true,
+      message: 'Fleet Owner database record purged successfully. Firebase Authentication cleanup is pending.',
+      firebaseStatus: 'REQUIRES_CLEANUP',
+      retryable: true,
+      uid,
+    };
   }
 };
 
@@ -387,19 +445,6 @@ const updateOrganizationStatus = async (id, status, reason, adminId) => {
     [uid, `Organization ${status}`, `Your organization profile has been ${status.toLowerCase()}. ${reason ? 'Reason: ' + reason : ''}`, 'Organization']
   );
 
-  return result.rows[0];
-};
-
-const softDeleteOrganization = async (id, adminId) => {
-  const result = await pool.query(
-    `UPDATE fleet_onboarding SET is_deleted = true, status = 'Deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
-    [id]
-  );
-  if (result.rows.length === 0) throw new Error('Organization not found');
-  await pool.query(
-    `INSERT INTO organization_audit_logs (organization_id, action, admin_id, reason) VALUES ($1, $2, $3, $4)`,
-    [id, 'Moved to Recycle Bin', adminId, 'Organization moved to recycle bin']
-  );
   return result.rows[0];
 };
 
@@ -570,64 +615,95 @@ const getActivityLogs = async ({ page, limit }) => {
   }
 };
 
+const softDeleteOrganization = async (id, adminId) => {
+  const orgRes = await pool.query(`SELECT status FROM fleet_onboarding WHERE id = $1 OR uid = $1`, [id]);
+  if (orgRes.rows.length === 0) throw new Error('Organization not found');
+  const currentStatus = orgRes.rows[0].status;
+
+  await pool.query(
+    `UPDATE fleet_onboarding SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id = $1 OR uid = $1`,
+    [id]
+  );
+
+  await logSystemAudit({
+    orgUid: id,
+    module: 'ORGANIZATION',
+    action: 'ORGANIZATION_SOFT_DELETE',
+    oldValue: { status: currentStatus },
+    newValue: { status: 'Deleted', is_deleted: true },
+  });
+
+  return { success: true, message: 'Organization moved to Recycle Bin' };
+};
+
+const restoreOrganization = async (id, adminId) => {
+  await pool.query(
+    `UPDATE fleet_onboarding SET status = COALESCE(previous_status, 'Approved'), is_deleted = false, deleted_at = NULL, previous_status = NULL WHERE id = $1 OR uid = $1`,
+    [id]
+  );
+
+  await logSystemAudit({
+    orgUid: id,
+    module: 'ORGANIZATION',
+    action: 'ORGANIZATION_RESTORE',
+    oldValue: { is_deleted: true },
+    newValue: { is_deleted: false, status: 'Approved' },
+  });
+
+  return { success: true, message: 'Organization restored to active status' };
+};
+
 const hardDeleteOrganization = async (id, adminId) => {
-  // id here is fleet_onboarding.id (org id)
+  // Level 3 Guard Check: Verify organization is in Recycle Bin
+  const checkRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id = $1 OR uid = $1`, [id]);
+  if (checkRes.rows.length === 0) throw new Error('Organization not found');
+  const orgRow = checkRes.rows[0];
+  if (!orgRow.is_deleted && orgRow.status !== 'Deleted') {
+    const err = new Error('Organization must be moved to Recycle Bin before permanent deletion.');
+    err.statusCode = 409;
+    throw err;
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    const safeExec = async (sql, args = []) => {
-      try {
-        await client.query('SAVEPOINT sp');
-        await client.query(sql, args);
-        await client.query('RELEASE SAVEPOINT sp');
-      } catch (e) {
-        await client.query('ROLLBACK TO SAVEPOINT sp');
-      }
-    };
-
-    // Get the uid for this org
-    const orgRes = await client.query('SELECT uid FROM fleet_onboarding WHERE id = $1', [id]);
-    if (orgRes.rows.length === 0) throw new Error('Organization not found');
-    const uid = orgRes.rows[0].uid;
-
-    // Cascade deletes — same as hardDeleteFleetOwner but triggered by org id
-    await safeExec('DELETE FROM organization_audit_logs WHERE organization_id = $1', [id]);
-    await safeExec('DELETE FROM vehicle_audit_logs WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
-    await safeExec('DELETE FROM telemetry_history WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
-    await safeExec('DELETE FROM live_telemetry WHERE vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
-    await safeExec('DELETE FROM fuel_logs WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM support_ticket_replies WHERE ticket_id IN (SELECT id FROM support_tickets WHERE uid = $1)', [uid]);
-    await safeExec('DELETE FROM support_tickets WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM report_history WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM report_schedules WHERE uid = $1', [uid]);
-    await safeExec('UPDATE devices SET assigned_vehicle_id = NULL, status = \'unassigned\' WHERE assigned_vehicle_id IN (SELECT id FROM vehicles WHERE uid = $1)', [uid]);
-    await safeExec('DELETE FROM activity_logs WHERE user_id = $1', [uid]);
-    await safeExec('DELETE FROM fleet_settings WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM alerts WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM trips WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM vehicles WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM drivers WHERE uid = $1', [uid]);
-    await safeExec('DELETE FROM notifications WHERE uid = $1', [uid]);
-    await client.query('DELETE FROM fleet_onboarding WHERE id = $1', [id]);
-    await safeExec('DELETE FROM users WHERE uid = $1', [uid]);
-
+    await client.query('DELETE FROM fleet_onboarding WHERE id = $1 OR uid = $1', [id]);
     await client.query('COMMIT');
 
-    // Firebase cleanup
-    try {
-      const adminFirebase = require('../../config/firebase');
-      await adminFirebase.auth().deleteUser(uid);
-    } catch (fbErr) {
-      console.warn(`Firebase user deletion warning for ${uid}:`, fbErr.message);
-    }
+    await logSystemAudit({
+      orgUid: id,
+      module: 'ORGANIZATION',
+      action: 'ORGANIZATION_PERMANENT_DELETE',
+      oldValue: { is_deleted: true },
+      newValue: { purged: true },
+    });
 
-    return { success: true };
+    return { success: true, message: 'Organization permanently deleted from database' };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
+  }
+};
+
+const retryFirebaseCleanup = async (uid, adminId) => {
+  try {
+    const adminFirebase = require('../../config/firebase');
+    await adminFirebase.auth().deleteUser(uid);
+
+    await logSystemAudit({
+      userUid: uid,
+      module: 'FLEET_OWNER',
+      action: 'FLEET_OWNER_FIREBASE_CLEANUP_SUCCESS',
+      oldValue: { firebaseStatus: 'REQUIRES_CLEANUP' },
+      newValue: { firebaseStatus: 'CLEANED' },
+    });
+
+    return { success: true, message: 'Firebase Authentication user deleted successfully' };
+  } catch (err) {
+    console.warn(`Retry Firebase cleanup failed for ${uid}:`, err.message);
+    return { success: false, message: `Firebase cleanup retry failed: ${err.message}` };
   }
 };
 
@@ -638,6 +714,7 @@ module.exports = {
   updateFleetOwner,
   updateFleetOwnerStatus,
   deleteFleetOwner,
+  restoreFleetOwner,
   hardDeleteFleetOwner,
   hardDeleteOrganization,
   resetFleetOwnerPassword,
@@ -645,6 +722,7 @@ module.exports = {
   getOrganizationDetail,
   updateOrganizationStatus,
   softDeleteOrganization,
+  restoreOrganization,
   getAllDrivers,
   getAllAlerts,
   getReports,
@@ -652,5 +730,7 @@ module.exports = {
   getSettings,
   updateSettings,
   getActivityLogs,
+  retryFirebaseCleanup,
+  logSystemAudit,
 };
 

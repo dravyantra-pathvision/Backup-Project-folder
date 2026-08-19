@@ -92,6 +92,15 @@ const deleteVehicle = async (req, res) => {
   }
 };
 
+const restoreVehicle = async (req, res) => {
+  try {
+    const data = await vehiclesService.restoreVehicle(req.params.id, req.user?.uid);
+    res.json({ success: true, message: 'Vehicle restored successfully', data });
+  } catch (err) {
+    handleError(res, 'Error restoring vehicle', err);
+  }
+};
+
 module.exports = {
   getAllVehicles,
   getVehicleDetail,
@@ -100,5 +109,6 @@ module.exports = {
   suspendVehicle,
   reactivateVehicle,
   deleteVehicle,
+  restoreVehicle,
   deleteVehiclePermanent,
 };

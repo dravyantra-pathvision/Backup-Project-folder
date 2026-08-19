@@ -51,8 +51,21 @@ const hardDeleteItem = async (req, res) => {
   }
 };
 
+const retryFirebaseCleanup = async (req, res) => {
+  try {
+    const { uid } = req.body;
+    if (!uid) return res.status(400).json({ error: 'uid is required' });
+    const adminService = require('./admin.service');
+    const result = await adminService.retryFirebaseCleanup(uid, req.user.uid);
+    res.json(result);
+  } catch (err) {
+    handleError(res, 'Error retrying Firebase cleanup', err);
+  }
+};
+
 module.exports = {
   getRecycledItems,
   restoreItem,
   hardDeleteItem,
+  retryFirebaseCleanup,
 };

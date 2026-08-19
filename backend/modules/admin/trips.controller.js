@@ -73,11 +73,21 @@ const deleteTrip = async (req, res) => {
   }
 };
 
+const restoreTrip = async (req, res) => {
+  try {
+    const data = await tripsService.restoreTrip(req.params.id, req.user?.uid);
+    res.json({ success: true, message: 'Trip restored successfully', data });
+  } catch (err) {
+    handleError(res, 'Error restoring trip', err);
+  }
+};
+
 module.exports = {
   getAllTrips,
   getTripById,
   getTripTimeline,
   exportTrips,
   deleteTrip,
+  restoreTrip,
   deleteTripPermanent,
 };

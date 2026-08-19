@@ -366,6 +366,9 @@ const initDB = async () => {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_notif BOOLEAN DEFAULT FALSE;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_notif BOOLEAN DEFAULT TRUE;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_prompted_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50);`);
 
     // fleet_onboarding
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS pan VARCHAR(50);`);
@@ -373,6 +376,9 @@ const initDB = async () => {
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS country VARCHAR(100) DEFAULT 'India';`);
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS fleet_size VARCHAR(50);`);
     await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS industry_type VARCHAR(100);`);
+    await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE fleet_onboarding ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50);`);
 
     // vehicles
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rc_url TEXT;`);
@@ -392,6 +398,19 @@ const initDB = async () => {
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS puc_expiry DATE;`);
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS fitness_expiry DATE;`);
     await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50);`);
+
+    // drivers
+    await client.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50);`);
+
+    // trips
+    await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50);`);
 
     // trips
     await client.query(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS trip_completed BOOLEAN DEFAULT FALSE;`);
