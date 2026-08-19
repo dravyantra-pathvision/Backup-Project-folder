@@ -81,10 +81,10 @@ router.use('/reports-center', reportsRoutes);
 // ── Drivers ───────────────────────────────────────────────────────────────────
 
 // ── Trips ─────────────────────────────────────────────────────────────────────
+router.get('/trips', tripsController.getAllTrips);
 router.get('/trips/export', tripsController.exportTrips);
 router.get('/trips/:id/timeline', tripsController.getTripTimeline);
 router.get('/trips/:id', tripsController.getTripById);
-router.get('/trips', tripsController.getAllTrips);
 router.post('/trips/:id/restore', tripsController.restoreTrip);
 router.delete('/trips/:id/permanent', tripsController.deleteTripPermanent);
 router.delete('/trips/:id', tripsController.deleteTrip);
@@ -136,10 +136,10 @@ router.get('/audit-logs/export', auditController.exportSystemAuditLogs);
 router.get('/audit-logs', auditController.getSystemAuditLogs);
 
 // ── Drivers (Monitoring & Suspension) ─────────────────────────────────────────
+router.get('/drivers', driversController.getAllDrivers);
 router.get('/drivers/export', driversController.exportDrivers);
 router.get('/drivers/:id', driversController.getDriverById);
 router.put('/drivers/:id/status', driversController.updateDriverStatus);
-router.get('/drivers', driversController.getAllDrivers);
 router.post('/drivers/:id/restore', driversController.restoreDriver);
 router.delete('/drivers/:id/permanent', driversController.deleteDriverPermanent);
 router.delete('/drivers/:id', driversController.deleteDriver);
