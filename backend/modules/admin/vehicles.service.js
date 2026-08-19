@@ -1,13 +1,17 @@
 // modules/admin/vehicles.service.js
 const { pool } = require('../../config/dbconfig');
 
-const paginate = (page, limit) => ({
-  offset: (page - 1) * limit,
-  limit,
-});
+const paginate = (page, limit) => {
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Number(limit) || 10);
+  return {
+    offset: (pageNum - 1) * limitNum,
+    limit: limitNum,
+  };
+};
 
-const getAllVehicles = async ({ page, limit, search, type, fuelType, status, organization, fleetOwner }) => {
-  const { offset } = paginate(page, limit);
+const getAllVehicles = async ({ page = 1, limit = 10, search, type, fuelType, status, organization, fleetOwner } = {}) => {
+  const { offset, limit: limitVal } = paginate(page, limit);
   const conditions = ['COALESCE(v.is_deleted, false) = false AND COALESCE(v.status, \'\') != \'Deleted\''];
   const params = [];
   let idx = 1;
@@ -64,7 +68,7 @@ const getAllVehicles = async ({ page, limit, search, type, fuelType, status, org
   `;
 
   const countRes = await pool.query(countQuery, params);
-  const dataRes = await pool.query(dataQuery, [...params, limit, offset]);
+  const dataRes = await pool.query(dataQuery, [...params, limitVal, offset]);
 
   return {
     data: dataRes.rows,

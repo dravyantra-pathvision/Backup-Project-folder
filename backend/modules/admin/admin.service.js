@@ -304,24 +304,24 @@ const resetFleetOwnerPassword = async (uid) => {
 const getAllOrganizations = async ({ page, limit, search, status }) => {
   const { offset } = paginate(page, limit);
   const params = [];
-  const conditions = ['COALESCE(is_deleted, false) = false AND COALESCE(status, \'\') != \'Deleted\''];
+  const conditions = ['COALESCE(fo.is_deleted, false) = false AND COALESCE(fo.status, \'\') != \'Deleted\''];
   let idx = 1;
 
   if (search) {
-    conditions.push(`(company_name ILIKE $${idx} OR city ILIKE $${idx} OR organization_name ILIKE $${idx})`);
+    conditions.push(`(fo.company_name ILIKE $${idx} OR fo.city ILIKE $${idx})`);
     params.push(`%${search}%`); 
     idx++;
   }
   
   if (status) {
-    conditions.push(`status = $${idx}`);
+    conditions.push(`fo.status = $${idx}`);
     params.push(status);
     idx++;
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const countRes = await pool.query(`SELECT COUNT(*) FROM fleet_onboarding ${where}`, params);
+  const countRes = await pool.query(`SELECT COUNT(*) FROM fleet_onboarding fo ${where}`, params);
   const dataRes  = await pool.query(
     `SELECT fo.*, u.email, u.full_name, COALESCE(u.phone, fo.contact_number) AS phone, u.role, u.account_status,
             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = fo.uid) AS vehicle_count,
