@@ -601,6 +601,19 @@ const initDB = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS vehicle_audit_logs (
+        id SERIAL PRIMARY KEY,
+        vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+        vehicle_plate VARCHAR(50),
+        action VARCHAR(100) NOT NULL,
+        reason TEXT,
+        remarks TEXT,
+        admin_id VARCHAR(128),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_vehicle_audit_plate ON vehicle_audit_logs(vehicle_plate);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_alert_audit_alert_id ON alert_audit_log(alert_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(type);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);`);
