@@ -143,11 +143,13 @@ const softDeleteVehicle = async (identifier, adminId) => {
   const checkRes = await pool.query(`SELECT is_deleted, status FROM vehicles WHERE plate = $1`, [identifier]);
   if (checkRes.rows.length === 0) throw new Error('Vehicle not found');
   const vRow = checkRes.rows[0];
-  if (vRow.is_deleted || vRow.status === 'Deleted') {
+  // Only skip if BOTH flags are correctly set (truly in Recycle Bin)
+  if (vRow.is_deleted === true && vRow.status === 'Deleted') {
     return { success: true, message: 'Vehicle is already in Recycle Bin' };
   }
-
-  const query = `UPDATE vehicles SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE plate = $1 RETURNING *`;
+  // Handles both fresh deletes AND inconsistent old records (status='Deleted' but is_deleted=false)
+  // Preserve the real previous status (never save 'Deleted' as previous_status)
+  const query = `UPDATE vehicles SET previous_status = COALESCE(NULLIF(status, 'Deleted'), previous_status, 'Active'), status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE plate = $1 RETURNING *`;
   const res = await pool.query(query, [identifier]);
   const plate = res.rows[0].plate;
 
