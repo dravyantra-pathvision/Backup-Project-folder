@@ -177,9 +177,15 @@ const getDriversExport = async (filters) => {
 };
 
 const softDeleteDriver = async (id, adminId) => {
-  const checkRes = await pool.query(`SELECT is_deleted, status FROM drivers WHERE id = $1`, [id]);
+  const cleanId = String(id || '').trim();
+  const checkRes = await pool.query(
+    `SELECT id, is_deleted, status FROM drivers WHERE TRIM(id) = $1 OR id ILIKE $1`,
+    [cleanId]
+  );
   if (checkRes.rows.length === 0) throw new Error('Driver not found');
   const dRow = checkRes.rows[0];
+  const realId = dRow.id;
+
   // Only skip if BOTH flags are correctly set (truly in Recycle Bin)
   if (dRow.is_deleted === true && dRow.status === 'Deleted') {
     return { success: true, message: 'Driver is already in Recycle Bin' };
@@ -187,7 +193,7 @@ const softDeleteDriver = async (id, adminId) => {
   // Handles both fresh deletes AND inconsistent old records (status='Deleted' but is_deleted=false)
   // Preserve the real previous status (never save 'Deleted' as previous_status)
   const query = `UPDATE drivers SET previous_status = COALESCE(NULLIF(status, 'Deleted'), previous_status, 'Active'), status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE id = $1 RETURNING *`;
-  const res = await pool.query(query, [id]);
+  const res = await pool.query(query, [realId]);
   return res.rows[0];
 };
 
