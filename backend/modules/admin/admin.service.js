@@ -226,24 +226,24 @@ const deleteFleetOwner = async (uid, adminId) => {
   const userRes = await pool.query(`SELECT is_deleted, account_status FROM users WHERE uid = $1`, [uid]);
   if (userRes.rows.length === 0) throw new Error('Fleet Owner not found');
   const userRow = userRes.rows[0];
-  if (userRow.is_deleted || userRow.account_status === 'Deleted') {
+  if (userRow.is_deleted === true && userRow.account_status === 'Deleted') {
     return { success: true, message: 'Fleet Owner is already in Recycle Bin' };
   }
   const currentStatus = userRow.account_status;
 
   await pool.query(
-    `UPDATE users SET previous_status = account_status, account_status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`,
+    `UPDATE users SET previous_status = COALESCE(NULLIF(account_status, 'Deleted'), previous_status, 'Active'), account_status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE uid = $1`,
     [uid]
   );
   await pool.query(
-    `UPDATE fleet_onboarding SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`,
+    `UPDATE fleet_onboarding SET previous_status = COALESCE(NULLIF(status, 'Deleted'), previous_status, 'Approved'), status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE uid = $1`,
     [uid]
   );
 
   // Soft delete associated vehicles, drivers, trips
-  await pool.query(`UPDATE vehicles SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`, [uid]);
-  await pool.query(`UPDATE drivers SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`, [uid]);
-  await pool.query(`UPDATE trips SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE uid = $1`, [uid]);
+  await pool.query(`UPDATE vehicles SET previous_status = COALESCE(NULLIF(status, 'Deleted'), previous_status, 'Active'), status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE uid = $1`, [uid]);
+  await pool.query(`UPDATE drivers SET previous_status = COALESCE(NULLIF(status, 'Deleted'), previous_status, 'Active'), status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE uid = $1`, [uid]);
+  await pool.query(`UPDATE trips SET previous_status = COALESCE(NULLIF(status, 'Deleted'), previous_status, 'Completed'), status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE uid = $1`, [uid]);
 
   await logSystemAudit({
     userUid: uid,
@@ -623,13 +623,13 @@ const softDeleteOrganization = async (id, adminId) => {
   const orgRes = await pool.query(`SELECT is_deleted, status FROM fleet_onboarding WHERE id::text = $1::text OR uid = $1::text`, [String(id)]);
   if (orgRes.rows.length === 0) throw new Error('Organization not found');
   const orgRow = orgRes.rows[0];
-  if (orgRow.is_deleted || orgRow.status === 'Deleted') {
+  if (orgRow.is_deleted === true && orgRow.status === 'Deleted') {
     return { success: true, message: 'Organization is already in Recycle Bin' };
   }
   const currentStatus = orgRow.status;
 
   await pool.query(
-    `UPDATE fleet_onboarding SET previous_status = status, status = 'Deleted', is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE id::text = $1::text OR uid = $1::text`,
+    `UPDATE fleet_onboarding SET previous_status = COALESCE(NULLIF(status, 'Deleted'), previous_status, 'Approved'), status = 'Deleted', is_deleted = true, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE id::text = $1::text OR uid = $1::text`,
     [String(id)]
   );
 
