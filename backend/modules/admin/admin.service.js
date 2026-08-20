@@ -87,9 +87,9 @@ const getDashboardStats = async () => {
 const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => {
   const { offset } = paginate(page, limit);
   const params = [];
-  // Fleet Owners tab = users who are fully onboarded (org status = 'Approved').
-  // Users who are still in Draft / Pending / Rejected belong in the Organizations tab, not here.
-  let where = `WHERE u.role = 'fleet_owner' AND (fo.status IS NULL OR fo.status = 'Approved' OR fo.status = 'active' OR fo.status = 'Active' OR fo.status != 'Deleted')`;
+  // Fleet Owners = users who have submitted an Organization Profile (INNER JOIN fleet_onboarding)
+  // Users without an Organization Profile (no onboarding submission) are NOT fleet owners and are excluded.
+  let where = `WHERE u.role = 'fleet_owner' AND fo.uid IS NOT NULL AND COALESCE(fo.status, '') != '' AND COALESCE(fo.status, '') != 'Deleted'`;
   let idx = 1;
 
   if (search) {
@@ -105,15 +105,13 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
     where += ` AND COALESCE(u.account_status, 'Active') != 'Deleted' AND COALESCE(u.is_deleted, false) = false`;
   }
 
-  // orgStatus filter is kept for API flexibility but only applies within Approved orgs
-  if (orgStatus && orgStatus !== 'Approved') {
-    // If admin explicitly filters by a non-Approved org status, return empty
-    // (those belong in the Organizations tab)
-    return { data: [], total: 0, page, limit };
+  if (orgStatus) {
+    where += ` AND fo.status = $${idx}`;
+    params.push(orgStatus); idx++;
   }
 
   const countRes = await pool.query(
-    `SELECT COUNT(*) FROM users u LEFT JOIN fleet_onboarding fo ON u.uid = fo.uid ${where}`,
+    `SELECT COUNT(*) FROM users u INNER JOIN fleet_onboarding fo ON u.uid = fo.uid ${where}`,
     params
   );
   const dataRes = await pool.query(
@@ -122,7 +120,7 @@ const getAllFleetOwners = async ({ page, limit, search, status, orgStatus }) => 
             (SELECT COUNT(*) FROM vehicles v WHERE v.uid = u.uid) AS vehicle_count,
             (SELECT COUNT(*) FROM drivers d WHERE d.uid = u.uid) AS driver_count
      FROM users u
-     LEFT JOIN fleet_onboarding fo ON u.uid = fo.uid
+     INNER JOIN fleet_onboarding fo ON u.uid = fo.uid
      ${where}
      ORDER BY u.created_at DESC
      LIMIT $${idx} OFFSET $${idx + 1}`,
