@@ -109,10 +109,15 @@ const getVehicleAuditLogs = async (plate) => {
 };
 
 const _logAction = async (plate, action, reason, remarks, adminId) => {
-  await pool.query(`
-    INSERT INTO vehicle_audit_logs (vehicle_plate, action, reason, remarks, admin_id)
-    VALUES ($1, $2, $3, $4, $5)
-  `, [plate, action, reason, remarks, adminId]);
+  try {
+    await pool.query(`
+      INSERT INTO vehicle_audit_logs (vehicle_plate, action, reason, remarks, admin_id)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [plate, action, reason, remarks, adminId]);
+  } catch (e) {
+    // Non-fatal: audit log failure must never block the core operation
+    console.warn('[vehicles] _logAction warning:', e.message);
+  }
 };
 
 const blockVehicle = async (plate, reason, remarks, adminId) => {

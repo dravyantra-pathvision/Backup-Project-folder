@@ -639,14 +639,33 @@ const initDB = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS vehicle_audit_logs (
         id SERIAL PRIMARY KEY,
-        vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
-        vehicle_plate VARCHAR(50),
+        vehicle_plate VARCHAR(50) REFERENCES vehicles(plate) ON DELETE SET NULL,
         action VARCHAR(100) NOT NULL,
         reason TEXT,
         remarks TEXT,
         admin_id VARCHAR(128),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+    // Migrate: if old broken table (with vehicle_id INTEGER FK) exists, drop and recreate
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'vehicle_audit_logs' AND column_name = 'vehicle_id'
+        ) THEN
+          DROP TABLE vehicle_audit_logs CASCADE;
+          CREATE TABLE vehicle_audit_logs (
+            id SERIAL PRIMARY KEY,
+            vehicle_plate VARCHAR(50) REFERENCES vehicles(plate) ON DELETE SET NULL,
+            action VARCHAR(100) NOT NULL,
+            reason TEXT,
+            remarks TEXT,
+            admin_id VARCHAR(128),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+        END IF;
+      END $$;
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_vehicle_audit_plate ON vehicle_audit_logs(vehicle_plate);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_alert_audit_alert_id ON alert_audit_log(alert_id);`);
