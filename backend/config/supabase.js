@@ -9,7 +9,7 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 } else {
-  console.warn('Supabase not configured; continuing without it');
+  // Supabase not configured; continuing with PostgreSQL / S3
 }
 
 module.exports = supabaseAdmin;
