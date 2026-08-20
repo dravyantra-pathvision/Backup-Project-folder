@@ -2,7 +2,10 @@
 // Extracted from L26-30 of index.js
 
 const requestLogger = (req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${new Date().toISOString()} [${res.statusCode}] - ${req.method} ${req.url} (${Date.now() - start}ms)`);
+  });
   next();
 };
 
