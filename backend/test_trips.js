@@ -1,15 +1,11 @@
-const dotenv = require('dotenv');
-dotenv.config();
-const { pool } = require('./db.js');
-
-(async () => {
+const { pool } = require('./config/dbconfig');
+async function test() {
   try {
-    const res = await pool.query('SELECT * FROM trips');
-    console.log('Trips count:', res.rows.length);
-    console.log('Trips:', res.rows);
-  } catch (err) {
-    console.error('Error querying trips:', err);
-  } finally {
-    await pool.end();
+    const res = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'trips'");
+    console.log(res.rows.map(r => r.column_name).join(', '));
+  } catch (e) {
+    console.error(e);
   }
-})();
+  process.exit();
+}
+test();

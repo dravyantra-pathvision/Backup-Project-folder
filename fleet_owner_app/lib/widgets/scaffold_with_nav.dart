@@ -57,17 +57,40 @@ class ScaffoldWithNav extends StatelessWidget {
           appBar: AppBar(
             title: const Text('DravYantra',
                 style: TextStyle(fontWeight: FontWeight.bold)),
-            leading: isSmallScreen
-                ? Builder(
-                    builder: (context) => AnimatedTapButton(
-                      onTap: () => Scaffold.of(context).openDrawer(),
-                      child: const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Icon(LucideIcons.menu),
-                      ),
+            leading: () {
+              final bool canPop = context.canPop();
+              final String location = GoRouterState.of(context).uri.toString();
+              if (canPop) {
+                return AnimatedTapButton(
+                  onTap: () => context.pop(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Icon(LucideIcons.arrowLeft),
+                  ),
+                );
+              }
+              if (location != '/dashboard') {
+                return AnimatedTapButton(
+                  onTap: () => context.go('/dashboard'),
+                  child: const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Icon(LucideIcons.arrowLeft),
+                  ),
+                );
+              }
+              if (isSmallScreen) {
+                return Builder(
+                  builder: (context) => AnimatedTapButton(
+                    onTap: () => Scaffold.of(context).openDrawer(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Icon(LucideIcons.menu),
                     ),
-                  )
-                : null,
+                  ),
+                );
+              }
+              return null;
+            }(),
             actions: [
               Consumer<DataEngine>(
                 builder: (context, engine, child) {

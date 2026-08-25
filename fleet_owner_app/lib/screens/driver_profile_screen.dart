@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import '../models/engine.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -72,6 +73,17 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             )
           : null,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Back',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/drivers');
+            }
+          },
+        ),
         title: Text('${driver.name} Profile'),
         backgroundColor: Colors.white,
         foregroundColor: AppTheme.textPrimary,

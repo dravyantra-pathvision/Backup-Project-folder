@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms and Conditions of Service | DravYantra PathVision Fleet Telematics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0284C7;
+      --primary-dark: #0369A1;
+      --navy: #0F172A;
+      --slate-900: #090D16;
+      --slate-800: #1E293B;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-100: #F1F5F9;
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --border: #E2E8F0;
+      --accent-green: #059669;
+      --accent-amber: #D97706;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      color: var(--navy);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Navigation Header */
+    .top-bar {
+      background: var(--slate-900);
+      color: #FFFFFF;
+      padding: 16px 36px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 22px;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-badge {
+      background: var(--primary);
+      color: #FFFFFF;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn-action {
+      background: rgba(255,255,255,0.08);
+      color: #FFFFFF;
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+
+    .btn-action:hover {
+      background: rgba(255,255,255,0.2);
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    /* Hero Header Banner */
+    .hero-banner {
+      background: linear-gradient(135deg, var(--slate-900) 0%, var(--slate-800) 100%);
+      color: #FFFFFF;
+      padding: 60px 36px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero-container {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    .hero-title {
+      font-size: 38px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 12px;
+    }
+
+    .hero-subtitle {
+      font-size: 16px;
+      color: #94A3B8;
+      max-width: 800px;
+      margin-bottom: 24px;
+    }
+
+    .meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .pill {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #E2E8F0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Layout Wrapper */
+    .container {
+      max-width: 1240px;
+      margin: 40px auto;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 40px;
+    }
+
+    /* Sticky Sidebar Navigation */
+    .sidebar {
+      position: sticky;
+      top: 90px;
+      height: fit-content;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+
+    .sidebar-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--slate-600);
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    .nav-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-list a {
+      color: var(--slate-600);
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 500;
+      padding: 9px 14px;
+      border-radius: 8px;
+      transition: all 0.2s;
+      display: block;
+    }
+
+    .nav-list a:hover {
+      color: var(--primary);
+      background: var(--slate-100);
+    }
+
+    /* Main Legal Body */
+    .content {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 56px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.03);
+    }
+
+    .section {
+      margin-bottom: 52px;
+      scroll-margin-top: 110px;
+    }
+
+    .section-num {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--primary);
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .section h2 {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.5px;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid var(--slate-100);
+    }
+
+    .section h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--slate-800);
+      margin: 24px 0 12px 0;
+    }
+
+    .section p {
+      font-size: 15px;
+      color: var(--slate-800);
+      margin-bottom: 16px;
+    }
+
+    .section ul, .section ol {
+      margin-left: 24px;
+      margin-bottom: 20px;
+    }
+
+    .section li {
+      font-size: 14.5px;
+      color: var(--slate-800);
+      margin-bottom: 10px;
+    }
+
+    .spec-card {
+      background: var(--slate-100);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      padding: 24px;
+      border-radius: 12px;
+      margin: 24px 0;
+    }
+
+    .spec-card h4 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 10px;
+    }
+
+    .spec-card p {
+      font-size: 14px;
+      color: var(--slate-600);
+      margin-bottom: 8px;
+    }
+
+    .warning-box {
+      background: #FFFBEB;
+      border: 1px solid #FDE68A;
+      border-left: 4px solid var(--accent-amber);
+      padding: 20px;
+      border-radius: 10px;
+      margin: 24px 0;
+      color: #92400E;
+    }
+
+    .warning-box h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .code-block {
+      background: var(--slate-900);
+      color: #E2E8F0;
+      padding: 16px 20px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      margin: 16px 0;
+      overflow-x: auto;
+    }
+
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 36px;
+      margin-top: 60px;
+      text-align: center;
+      color: var(--slate-600);
+      font-size: 13px;
+    }
+
+    @media print {
+      .top-bar, .sidebar, .btn-action {
+        display: none !important;
+      }
+      .container {
+        grid-template-columns: 1fr;
+        margin: 0;
+        padding: 0;
+      }
+      .content {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="top-bar">
+    <div class="brand">
+      <span>DravYantra PathVision</span>
+      <span class="brand-badge">Legal Portal</span>
+    </div>
+    <div class="header-actions">
+      <a href="../privacy_policy/index.html" class="btn-action">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 1a2 2 0 0 1 2 2v2h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1V3a2 2 0 0 1 2-2zm2 4V3a1 1 0 0 0-2 0v2h2z"/></svg>
+        Privacy Policy
+      </a>
+      <button class="btn-action" onclick="window.print()">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4h8z"/></svg>
+        Print Document
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero Header Banner -->
+  <section class="hero-banner">
+    <div class="hero-container">
+      <h1 class="hero-title">Terms and Conditions of Service</h1>
+      <p class="hero-subtitle">Comprehensive legal specifications, software SLAs, hardware telematics compliance guidelines, and asset management terms governing DravYantra PathVision Enterprise Platform.</p>
+      <div class="meta-pills">
+        <span class="pill">Effective Date: August 10, 2026</span>
+        <span class="pill">Document Version: v3.0 (Patent & Engineering Grade)</span>
+        <span class="pill">Jurisdiction: Karnataka, India</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Container -->
+  <div class="container">
+    
+    <!-- Table of Contents Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-title">Document Directory</div>
+      <ul class="nav-list">
+        <li><a href="#sec-1">1. Preamble & Definitions</a></li>
+        <li><a href="#sec-2">2. Subscription & Accounts</a></li>
+        <li><a href="#sec-3">3. Hardware Specifications</a></li>
+        <li><a href="#sec-4">4. Software Stack & Cloud SLA</a></li>
+        <li><a href="#sec-5">5. Fuel & Telematics Algorithms</a></li>
+        <li><a href="#sec-6">6. Data Ownership & IP Rights</a></li>
+        <li><a href="#sec-7">7. Prohibited Uses & Anti-Tamper</a></li>
+        <li><a href="#sec-8">8. Billing & Service Archival</a></li>
+        <li><a href="#sec-9">9. Limitation of Liability</a></li>
+        <li><a href="#sec-10">10. Governing Law & Court</a></li>
+      </ul>
+    </aside>
+
+    <!-- Main Content Document -->
+    <main class="content">
+      
+      <!-- Section 1 -->
+      <section id="sec-1" class="section">
+        <span class="section-num">SECTION 01</span>
+        <h2>1. Preamble & System Definitions</h2>
+        <p>This master agreement ("Terms and Conditions", "Terms") constitutes a legally binding agreement between you (whether individually or on behalf of a commercial fleet operating entity, transportation corporation, or logistics service provider, hereafter "Customer", "User", or "Fleet Operator") and <strong>DravYantra PathVision Technologies Private Limited</strong> ("DravYantra", "Platform", "We", "Us", or "Our").</p>
+        <p>By creating an account, registering vehicle assets, logging into the Admin Panel or Fleet Owner Mobile Application, or consuming DravYantra Telematics REST APIs, you acknowledge that you have read, understood, and agreed to be bound by every provision of this document.</p>
+        
+        <h3>1.1 Specialized Telematics Terminology</h3>
+        <ul>
+          <li><strong>"Telematics Hardware":</strong> Physical electronic IoT devices installed within commercial vehicles, including AIS-140 GPS locators, OBD-II diagnostic adapters, RS485 fuel level probes, and engine relay actuators.</li>
+          <li><strong>"DravYantra Engine":</strong> The cloud-based software processing system comprising Node.js microservices, PostgreSQL relational database instances, AWS EC2 compute nodes, and AWS S3 object storage.</li>
+          <li><strong>"GIS Mapping Engine":</strong> Geographical Information System basemap infrastructure powered by OpenStreetMap and CARTO Voyager high-density vector rendering engines with international English (Latin) location labels.</li>
+          <li><strong>"Fuel Theft Threshold":</strong> Mathematical algorithm detecting tank level percentage drops exceeding 5.0% within an active time window.</li>
+        </ul>
+      </section>
+
+      <!-- Section 2 -->
+      <section id="sec-2" class="section">
+        <span class="section-num">SECTION 02</span>
+        <h2>2. Account Registration & Enterprise Licensing</h2>
+        <p>Access to the DravYantra PathVision platform requires the creation of verified user credentials through Firebase Authentication. Fleet Owners and Platform Administrators must maintain accurate, current, and complete organizational data.</p>
+        
+        <h3>2.1 Enterprise Credentials & Security</h3>
+        <p>Users are strictly responsible for maintaining the confidentiality of their authentication tokens, passcodes, and master admin login credentials. Any action performed under an authenticated user session is deemed authorized by the Fleet Operator. DravYantra implements session revocation mechanisms capable of invalidating active session tokens across devices upon security trigger.</p>
+      </section>
+
+      <!-- Section 3 -->
+      <section id="sec-3" class="section">
+        <span class="section-num">SECTION 03</span>
+        <h2>3. Hardware Telematics & IoT Sensor Compliance</h2>
+        <p>DravYantra PathVision interfaces seamlessly with a broad array of automotive telematics hardware and onboard sensors. Hardware deployment is subject to strict engineering operational standards:</p>
+
+        <div class="spec-card">
+          <h4>Certified Telematics Device Specifications:</h4>
+          <p>• <strong>AIS-140 Certified GPS Trackers:</strong> Dual-SIM cellular 4G/LTE telematics units compliant with Indian Ministry of Road Transport and Highways (MoRTH) standards, featuring internal SOS emergency buttons and 10-second packet interval polling.<br>
+          • <strong>OBD-II Diagnostic Adapters:</strong> Plug-and-play vehicle bus telemetry modules extracting real-time vehicle speed (km/h), engine RPM, coolant temperature, ignition voltage, and diagnostic trouble codes (DTCs).<br>
+          • <strong>Digital Fuel Level Sensors:</strong> RS485 ultrasonic tank probes, capacitive fuel rods, and float-arm voltage transducers installed inside primary and secondary fuel tanks.<br>
+          • <strong>Engine Relay Actuators:</strong> Remote immobilizer relays wired to vehicle starter/ignition circuits for automated or admin-triggered engine cutoff during critical security events.</p>
+        </div>
+
+        <h3>3.1 Installation Liability & Certification</h3>
+        <p>All physical hardware installations, vehicle wiring splices, and sensor calibrations must be conducted by certified automotive electrical engineers. DravYantra accepts zero financial or legal liability for vehicle electrical short circuits, battery drain, ECU failures, or vehicle OEM warranty voids caused by improper third-party wiring or unauthorized hardware tampering.</p>
+
+        <div class="warning-box">
+          <h4>Warning on Fuel Tank Calibration:</h4>
+          <p>Fuel theft detection sensitivity relies on initial tank calibration curves (Voltage/RS485 raw value vs. Fuel Liters). Uncalibrated sensors or irregular tank shapes may yield percentage variances. DravYantra does not guarantee 100% loss prevention against physical fuel siphoning under uncalibrated states.</p>
+        </div>
+      </section>
+
+      <!-- Section 4 -->
+      <section id="sec-4" class="section">
+        <span class="section-num">SECTION 04</span>
+        <h2>4. Software Infrastructure, Cloud Architecture & SLA</h2>
+        <p>The DravYantra platform operates on an enterprise-grade cloud architecture designed for continuous telemetry processing:</p>
+        
+        <ul>
+          <li><strong>Cloud Compute & Database:</strong> High-concurrency Node.js REST API servers deployed on Amazon Web Services (AWS EC2) with PostgreSQL relational database clusters and indexed spatial queries.</li>
+          <li><strong>Encrypted Document Repository:</strong> Amazon Web Services S3 cloud bucket infrastructure (<code>dravyantra-uploads</code>) enforcing server-side AES-256 encryption for vehicle RCs, driver licenses, and fleet compliance artifacts.</li>
+          <li><strong>GIS Location Rendering:</strong> High-definition CARTO Voyager basemap layers providing international English (Latin) location labels across all tracking views.</li>
+        </ul>
+
+        <h3>4.1 Service Level Agreement (SLA) & Cellular Connectivity</h3>
+        <p>DravYantra targets a <strong>99.9% operational uptime SLA</strong> for core API gateways and live map tracking web sockets. However, telematics data transmission requires active cellular GSM coverage (4G/LTE/5G) and GNSS satellite visibility (GPS/GLONASS/NavIC). DravYantra shall not be held liable for telemetry packet delays or temporary signal dropouts occurring in underground parking structures, mountainous tunnels, cellular dead zones, or during severe solar/atmospheric interference.</p>
+      </section>
+
+      <!-- Section 5 -->
+      <section id="sec-5" class="section">
+        <span class="section-num">SECTION 05</span>
+        <h2>5. Predictive Analytics & Telematics Algorithms</h2>
+        <p>DravYantra PathVision incorporates proprietary mathematical models to analyze raw vehicle sensor streams:</p>
+        
+        <div class="code-block">
+// DravYantra Telematics Logic Overview
+Fuel Theft Alert Trigger  : Drop > 5.0% Tank Capacity within 300s window
+Idling Waste Alert Trigger: Speed = 0 km/h AND Ignition = ON for > 15 Mins
+Overspeed Alert Trigger   : Speed > 80 km/h (Global Fleet Ceiling Limit)
+Device Disconnect Timeout : Zero Packets Received for > 10 Minutes
+        </div>
+
+        <p>Algorithms process incoming telemetry packets to detect fuel theft, excessive idling, and dangerous driving behaviors. Fleet owners acknowledge that thresholds are configurable through the Admin Settings panel and agree to set parameters appropriate for their vehicle types.</p>
+      </section>
+
+      <!-- Section 6 -->
+      <section id="sec-6" class="section">
+        <span class="section-num">SECTION 06</span>
+        <h2>6. Data Ownership & Intellectual Property Rights</h2>
+        <p><strong>Customer Data Ownership:</strong> Customers retain exclusive legal ownership of all raw fleet operational metrics generated by their vehicles, including historical GPS breadcrumb trails, fuel logs, driver assignment records, and uploaded KYC documentation.</p>
+        <p><strong>DravYantra Intellectual Property:</strong> All software code, database architecture, UI design components, logo assets, telematics algorithms, mathematical models, and patent-pending diagnostic frameworks remain the exclusive intellectual property of DravYantra PathVision Technologies. Copying, decompiling, reverse engineering, or scraping the platform is strictly prohibited.</p>
+      </section>
+
+      <!-- Section 7 -->
+      <section id="sec-7" class="section">
+        <span class="section-num">SECTION 07</span>
+        <h2>7. Prohibited Uses & Anti-Tamper Policy</h2>
+        <p>Users explicitly agree NOT to engage in any of the following restricted behaviors:</p>
+        <ul>
+          <li>Using GPS jammers, signal attenuation shields, or voltage spoofing resistors to alter vehicle location or fuel readings.</li>
+          <li>Deploying automated scrapers or bots against DravYantra REST API endpoints.</li>
+          <li>Misusing remote engine immobilizer relays to intentionally disable moving vehicles on active public highways or high-speed expressways.</li>
+          <li>Attempting unauthorized access to administrative database tables or modifying active session tokens.</li>
+        </ul>
+      </section>
+
+      <!-- Section 8 -->
+      <section id="sec-8" class="section">
+        <span class="section-num">SECTION 08</span>
+        <h2>8. Billing, SaaS Subscriptions & Data Archival</h2>
+        <p>DravYantra operates on a Software-as-a-Service (SaaS) per-vehicle subscription model. Subscription fees are billed monthly or annually in advance. In the event of non-payment, DravYantra reserves the right to suspend live telemetry access after a 15-day grace period. Suspended account telemetry data is archived for 60 days prior to permanent erasure.</p>
+      </section>
+
+      <!-- Section 9 -->
+      <section id="sec-9" class="section">
+        <span class="section-num">SECTION 09</span>
+        <h2>9. Limitation of Liability & Indemnification</h2>
+        <p>To the fullest extent permitted by applicable law, DravYantra PathVision, its directors, employees, and software engineers shall not be liable for any indirect, incidental, punitive, special, or consequential damages—including traffic violation fines, driver accidents, cargo spillage, vehicle breakdown costs, or lost profits—arising out of platform usage or telematics delays.</p>
+        <p>In no circumstance shall DravYantra's cumulative financial liability exceed the total subscription fees paid by the customer during the six (6) months immediately preceding the claim.</p>
+      </section>
+
+      <!-- Section 10 -->
+      <section id="sec-10" class="section">
+        <span class="section-num">SECTION 10</span>
+        <h2>10. Governing Law & Dispute Resolution</h2>
+        <p>These Terms and Conditions shall be governed by, interpreted, and enforced in accordance with the laws of India. Any legal dispute, claim, or arbitration arising out of or in connection with these Terms shall be subject to the exclusive jurisdiction of the commercial courts located in <strong>Bengaluru, Karnataka, India</strong>.</p>
+      </section>
+
+      <div class="footer">
+        <p>© 2026 DravYantra PathVision Technologies Private Limited. All Rights Reserved.<br>Enterprise Telematics & Commercial Fleet Asset Management System.</p>
+      </div>
+
+    </main>
+  </div>
+
+</body>
+</html>

@@ -355,7 +355,20 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Complete Organization Profile')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Back',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/login');
+            }
+          },
+        ),
+        title: const Text('Complete Organization Profile'),
+      ),
       body: Stepper(
         type: StepperType.vertical,
         currentStep: _currentStep,

@@ -47,6 +47,17 @@ class _RejectedScreenState extends State<RejectedScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Back',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/login');
+            }
+          },
+        ),
         title: const Text('Application Rejected'),
         actions: [
           IconButton(icon: const Icon(LucideIcons.logOut), onPressed: _logout),

@@ -123,18 +123,19 @@ async function sendEmail(to, subject, text, html, customFrom = null) {
     return;
   }
   try {
-    const fromAddress = customFrom || `"DravYantra" <${SMTP_USER}>`;
+    const fromAddress = customFrom || `"DravYantra Account" <${SMTP_USER}>`;
     await emailTransporter.sendMail({
       from: fromAddress,
+      replyTo: SMTP_USER,
       to,
       subject,
       text,
       html,
       headers: {
-        'X-Priority': '1',
-        'X-MSMail-Priority': 'High',
-        'Importance': 'High',
-        'X-Entity-Ref-ID': `dravyantra-verify-${Date.now()}`
+        'X-Entity-Ref-ID': `dravyantra-verify-${Date.now()}`,
+        'Precedence': 'transactional',
+        'List-Unsubscribe': `<mailto:${SMTP_USER}?subject=unsubscribe>`,
+        'X-Mailer': 'DravYantra-Mailer-1.0'
       }
     });
     console.log(`[NotificationService] Email sent successfully to ${to} from ${fromAddress}`);

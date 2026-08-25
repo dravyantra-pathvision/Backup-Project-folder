@@ -1003,7 +1003,13 @@ class _TripDetailDrawer extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(trip.id, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                    Expanded(
+                      child: Text(
+                        trip.id, 
+                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     Row(
                       children: [
                         IconButton(
@@ -1106,12 +1112,12 @@ class _TripDetailDrawer extends StatelessWidget {
                 _InfoRow(label: 'Load Description', value: trip.load, icon: LucideIcons.box),
                 _InfoRow(label: 'e-Way Bill', value: trip.ewayBill, icon: LucideIcons.fileText),
                 _InfoRow(label: 'Date', value: trip.date, icon: LucideIcons.calendar),
-                _InfoRow(label: 'Total Distance', value: '${trip.distance} km', icon: Icons.route),
-                _InfoRow(label: 'Distance Covered', value: '${(trip.distance * trip.progress).toStringAsFixed(1)} km', icon: LucideIcons.navigation),
-                _InfoRow(label: 'Remaining Distance', value: '${(trip.distance * (1.0 - trip.progress)).toStringAsFixed(1)} km', icon: LucideIcons.map),
+                _InfoRow(label: 'Total Distance', value: '${trip.distance.toStringAsFixed(1)} km', icon: Icons.route),
+                _InfoRow(label: 'Distance Covered', value: '${(normalized == 'completed' ? trip.distance : (trip.distance * trip.progress)).toStringAsFixed(1)} km', icon: LucideIcons.navigation),
+                _InfoRow(label: 'Remaining Distance', value: '${(normalized == 'completed' ? 0.0 : (trip.distance * (1.0 - trip.progress))).toStringAsFixed(1)} km', icon: LucideIcons.map),
                 _InfoRow(
                   label: 'Fuel Used', 
-                  value: '${(trip.status == 'pending' || trip.status == 'not started') ? '0.0' : ((trip.distance * trip.progress) / (trip.defaultMileage > 0 ? trip.defaultMileage : 4.0)).toStringAsFixed(1)} L', 
+                  value: '${(normalized == 'pending' || normalized == 'not started') ? '0.0' : (trip.fuelUsed > 0 ? trip.fuelUsed.toStringAsFixed(1) : ((trip.distance * (normalized == 'completed' ? 1.0 : trip.progress)) / (trip.defaultMileage > 0 ? trip.defaultMileage : 4.0)).toStringAsFixed(1))} L', 
                   icon: LucideIcons.fuel,
                 ),
                 _InfoRow(label: 'Default Mileage', value: '${trip.defaultMileage.toStringAsFixed(1)} km/l', icon: LucideIcons.gauge),

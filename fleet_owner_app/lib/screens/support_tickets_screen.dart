@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../providers/support_provider.dart';
 import '../core/theme.dart';
 
@@ -40,6 +41,17 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Back',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/settings');
+            }
+          },
+        ),
         title: const Text('Support Tickets', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         backgroundColor: AppTheme.primary,
         iconTheme: const IconThemeData(color: Colors.white),

@@ -14,3 +14,8 @@ backend/serviceAccountKey.json
 # Sensitive Firebase Info
 frontend/android/app/google-services.json
 frontend/lib/firebase_options.dart
+
+# Archives
+*.zip
+*.tar
+*.tar.gz

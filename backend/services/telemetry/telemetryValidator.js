@@ -7,17 +7,17 @@
 const { pool } = require('../../config/dbconfig');
 
 const DEFAULT_SETTINGS = {
-  fuelPricePerLiter:         92.0,
+  fuelPricePerLiter:         100.0,
   co2FactorPerLiter:         2.68,
-  gpsDriftThresholdKm:       0.05,
+  gpsDriftThresholdKm:       0.005,
   gpsMaxJumpKm:              1.0,
   fuelNoiseThresholdLiters:  0.3,
   fuelRefillThresholdLiters: 5.0,
   fuelTheftThresholdLiters:  3.0,
   overspeedThresholdKmh:     80,
-  idleWarningSec:            300,
+  idleWarningSec:            180,
   idleCriticalSec:           900,
-  harshBrakeDeltaKmh:        30,
+  harshBrakeDeltaKmh:        20,
   rapidAccelDeltaKmh:        25,
   heartbeatTimeoutSec:       120,
 };
@@ -31,9 +31,9 @@ function mergeSettings(row) {
     gpsMaxJumpKm:              Number(row.gps_max_jump_km              ?? DEFAULT_SETTINGS.gpsMaxJumpKm),
     fuelNoiseThresholdLiters:  Number(row.fuel_noise_threshold_liters  ?? DEFAULT_SETTINGS.fuelNoiseThresholdLiters),
     fuelRefillThresholdLiters: Number(row.fuel_refill_threshold_liters ?? DEFAULT_SETTINGS.fuelRefillThresholdLiters),
-    fuelTheftThresholdLiters:  Number(row.fuel_theft_threshold_liters  ?? DEFAULT_SETTINGS.fuelTheftThresholdLiters),
+    fuelTheftThresholdLiters:  Number(row.fuel_theft_threshold_liters  ?? row.fuel_drop_threshold ?? DEFAULT_SETTINGS.fuelTheftThresholdLiters),
     overspeedThresholdKmh:     Number(row.overspeed_threshold_kmh      ?? row.speed_threshold ?? DEFAULT_SETTINGS.overspeedThresholdKmh),
-    idleWarningSec:            Number(row.idle_warning_seconds         ?? DEFAULT_SETTINGS.idleWarningSec),
+    idleWarningSec:            Number(row.idle_warning_seconds         ?? (row.idle_limit ? Number(row.idle_limit) * 60 : DEFAULT_SETTINGS.idleWarningSec)),
     idleCriticalSec:           Number(row.idle_critical_seconds        ?? DEFAULT_SETTINGS.idleCriticalSec),
     harshBrakeDeltaKmh:        Number(row.harsh_brake_delta_kmh        ?? DEFAULT_SETTINGS.harshBrakeDeltaKmh),
     rapidAccelDeltaKmh:        Number(row.rapid_accel_delta_kmh        ?? DEFAULT_SETTINGS.rapidAccelDeltaKmh),

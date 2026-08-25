@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import 'package:provider/provider.dart';
 import '../models/engine.dart';
@@ -54,6 +55,17 @@ class FuelCalculationDetailsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Back',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/fuel');
+            }
+          },
+        ),
         title: Text('$metric Breakdown'),
         backgroundColor: Colors.white,
         foregroundColor: AppTheme.textPrimary,
@@ -90,25 +102,31 @@ class FuelCalculationDetailsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isFuelLoss ? 'Total Fuel Loss' : 'Total Fuel Spend',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        isFuelLoss
-                            ? '₹${totalLossRupees.toStringAsFixed(2)}  (${totalLossLiters.toStringAsFixed(2)} L)'
-                            : '₹${totalSpendRupees.toStringAsFixed(2)}  (${totalSpendLiters.toStringAsFixed(2)} L)',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: isFuelLoss ? AppTheme.danger : AppTheme.primaryBlue,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isFuelLoss ? 'Total Fuel Loss' : 'Total Fuel Spend',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            isFuelLoss
+                                ? '₹${totalLossRupees.toStringAsFixed(2)}  (${totalLossLiters.toStringAsFixed(2)} L)'
+                                : '₹${totalSpendRupees.toStringAsFixed(2)}  (${totalSpendLiters.toStringAsFixed(2)} L)',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: isFuelLoss ? AppTheme.danger : AppTheme.primaryBlue,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -124,7 +142,7 @@ class FuelCalculationDetailsScreen extends StatelessWidget {
                 physics: const NeverScrollableScrollPhysics(),
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
-                childAspectRatio: 2.2,
+                childAspectRatio: 1.6,
                 children: [
                   _categoryCard('Idle Wastage', idleLossRupees, idleLossLiters, LucideIcons.clock, Colors.orange),
                   _categoryCard('Rash Driving', speedingLossRupees, speedingLossLiters, LucideIcons.zap, Colors.red),
@@ -161,7 +179,7 @@ class FuelCalculationDetailsScreen extends StatelessWidget {
 
   Widget _categoryCard(String title, double rupees, double liters, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -170,17 +188,21 @@ class FuelCalculationDetailsScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 10),
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(title, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text('₹${rupees.toStringAsFixed(1)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-                Text('${liters.toStringAsFixed(2)} L', style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                Text(title, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 1),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text('₹${rupees.toStringAsFixed(1)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+                ),
+                Text('${liters.toStringAsFixed(2)} L', style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
               ],
             ),
           ),
@@ -213,7 +235,8 @@ class FuelCalculationDetailsScreen extends StatelessWidget {
   }
 
   Widget _tripLossCard(Trip t) {
-    final double ineffLossRupees = t.fuelWasted * (t.fuelPrice > 0 ? t.fuelPrice : 92.0);
+    final double price = t.fuelPrice > 0 ? t.fuelPrice : 100.0;
+    final double ineffLossRupees = t.fuelWasted * price;
     final double totalLossRupees = t.idleMoneyWasted + t.speedingMoneyLoss + t.theftMoneyLoss + ineffLossRupees;
     final double totalLossLiters = t.idleFuelWasted + t.speedingFuelLoss + t.theftFuelLoss + t.fuelWasted;
 

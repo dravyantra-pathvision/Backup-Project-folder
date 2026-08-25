@@ -71,6 +71,17 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(LucideIcons.arrowLeft),
+          tooltip: 'Back',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/login');
+            }
+          },
+        ),
         title: const Text('Pending Approval'),
         actions: [
           IconButton(icon: const Icon(LucideIcons.logOut), onPressed: _logout),

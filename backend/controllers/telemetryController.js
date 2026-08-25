@@ -123,7 +123,7 @@ async function _updateVehicleLive(vehicle, packet) {
       lat, lng, speed, fuel,
       power === true,
       vibration || 0.0,
-      speed > 0 && lat && lng,
+      Boolean(speed > 0 && lat && lng),
       JSON.stringify([[lat, lng]]),
       vehicle.device_id,
     ]

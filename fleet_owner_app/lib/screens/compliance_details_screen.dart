@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import 'package:provider/provider.dart';
 import '../models/engine.dart';
@@ -51,6 +52,17 @@ class ComplianceDetailsScreen extends StatelessWidget {
       initialIndex: initialTab == 'Expired' ? 0 : (initialTab == 'Expiring Soon' ? 1 : 2),
       child: Scaffold(
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(LucideIcons.arrowLeft),
+            tooltip: 'Back',
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/dashboard');
+              }
+            },
+          ),
           title: const Text('Compliance Documents'),
           backgroundColor: Colors.white,
           foregroundColor: AppTheme.textPrimary,

@@ -248,6 +248,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       onTap: () {
         Navigator.push(context, MaterialPageRoute(builder: (context) => Scaffold(
           appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(LucideIcons.arrowLeft),
+              tooltip: 'Back',
+              onPressed: () => Navigator.pop(context),
+            ),
             title: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             elevation: 0,
             backgroundColor: Colors.transparent,

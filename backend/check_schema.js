@@ -1,32 +1,29 @@
 require('dotenv').config();
 const { pool } = require('./config/dbconfig');
 
-async function checkSchema() {
-  const tables = ['vehicles', 'drivers', 'trips', 'alerts', 'devices'];
-  for (const table of tables) {
-    const r = await pool.query(
-      `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '${table}' ORDER BY ordinal_position`
-    );
-    console.log(`\n=== ${table} ===`);
-    r.rows.forEach(row => console.log(`  ${row.column_name} (${row.data_type})`));
-  }
+async function run() {
+  // Vehicles columns
+  const v = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'vehicles' ORDER BY ordinal_position");
+  console.log('VEHICLES columns:', v.rows.map(c => c.column_name).join(', '));
 
-  // Sample some plate values from vehicles
-  const veh = await pool.query('SELECT plate, driver, uid FROM vehicles LIMIT 5');
-  console.log('\n=== sample vehicles ===');
-  console.table(veh.rows);
+  // Trips columns
+  const t = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'trips' ORDER BY ordinal_position");
+  console.log('TRIPS columns:', t.rows.map(c => c.column_name).join(', '));
 
-  // Sample some drivers
-  const drv = await pool.query('SELECT id, name, uid FROM drivers LIMIT 5');
-  console.log('\n=== sample drivers ===');
-  console.table(drv.rows);
+  // Sample vehicles
+  const vs = await pool.query('SELECT * FROM vehicles LIMIT 3');
+  console.log('\nSample vehicles rows:', JSON.stringify(vs.rows, null, 2));
 
-  // Sample some trips
-  const trp = await pool.query('SELECT vehicle, driver, uid FROM trips LIMIT 5');
-  console.log('\n=== sample trips ===');
-  console.table(trp.rows);
+  // Sample trips
+  const ts = await pool.query('SELECT * FROM trips LIMIT 3');
+  console.log('\nSample trips rows:', JSON.stringify(ts.rows, null, 2));
 
+  // Check users: emailVerified vs not
+  const us = await pool.query('SELECT uid, email, role, account_status FROM users ORDER BY created_at DESC');
+  console.log('\nAll users:', JSON.stringify(us.rows, null, 2));
+
+  await pool.end();
   process.exit(0);
 }
 
-checkSchema().catch(e => { console.error(e); process.exit(1); });
+run().catch(e => { console.error(e); process.exit(1); });
