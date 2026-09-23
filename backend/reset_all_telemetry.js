@@ -57,13 +57,14 @@ async function resetAllTelemetryAndTrips() {
       console.warn("⚠️ Could not clear alerts:", e.message);
     }
 
-    // 4. Clear theft & refill events
+    // 4. Clear theft, refill, lifetime stats & logs
     try {
       await client.query(`DELETE FROM fuel_theft_events`);
       await client.query(`DELETE FROM fuel_refill_events`);
-      console.log("✅ Cleared fuel_theft_events & fuel_refill_events tables.");
+      await client.query(`TRUNCATE TABLE vehicle_lifetime_stats, fuel_logs, alert_audit_log CASCADE`);
+      console.log("✅ Cleared fuel events, vehicle_lifetime_stats, fuel_logs & alert_audit_log.");
     } catch (e) {
-      // Table might not exist
+      console.warn("⚠️ Error clearing secondary log tables:", e.message);
     }
 
     // 5. Reset vehicle live telemetry state (fuel = NULL so initial simulation packet sets baseline without jump)

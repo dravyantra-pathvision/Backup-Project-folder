@@ -4,7 +4,7 @@
 //   2. Local disk fallback (dev / emergency) — unchanged from original behaviour
 const fs = require('fs');
 const path = require('path');
-const { PutObjectCommand } = require('@aws-sdk/client-s3');
+const { PutObjectCommand, DeleteObjectCommand, ListObjectVersionsCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const s3Client = require('../config/s3');
 
 const uploadFile = async (bucket, file, req) => {
@@ -54,4 +54,77 @@ const uploadFile = async (bucket, file, req) => {
   return { url: publicUrl };
 };
 
-module.exports = { uploadFile };
+/**
+ * deleteFile
+ * Physically deletes a file from S3 (including object versions if versioned) or local disk.
+ * Idempotent: Does not throw if file is already missing.
+ */
+const deleteFile = async (fileUrl) => {
+  if (!fileUrl || typeof fileUrl !== 'string') return;
+
+  // ── S3 URL Handling ────────────────────────────────────────────────────────
+  if (fileUrl.includes('.amazonaws.com/') || fileUrl.includes('s3.')) {
+    if (s3Client && process.env.AWS_S3_BUCKET) {
+      try {
+        const urlObj = new URL(fileUrl);
+        const s3Key = urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
+        
+        // 1. Delete main object
+        await s3Client.send(new DeleteObjectCommand({
+          Bucket: process.env.AWS_S3_BUCKET,
+          Key: s3Key,
+        }));
+
+        // 2. Check and delete versioned objects if bucket has versioning
+        try {
+          const versions = await s3Client.send(new ListObjectVersionsCommand({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Prefix: s3Key,
+          }));
+
+          const objectsToDelete = [];
+          if (versions.Versions) {
+            versions.Versions.forEach(v => {
+              if (v.Key === s3Key) objectsToDelete.push({ Key: v.Key, VersionId: v.VersionId });
+            });
+          }
+          if (versions.DeleteMarkers) {
+            versions.DeleteMarkers.forEach(v => {
+              if (v.Key === s3Key) objectsToDelete.push({ Key: v.Key, VersionId: v.VersionId });
+            });
+          }
+
+          if (objectsToDelete.length > 0) {
+            await s3Client.send(new DeleteObjectsCommand({
+              Bucket: process.env.AWS_S3_BUCKET,
+              Delete: { Objects: objectsToDelete },
+            }));
+          }
+        } catch (vErr) {
+          // Non-critical if versioning isn't enabled
+        }
+        console.log(`✅ S3 file deleted: ${s3Key}`);
+      } catch (err) {
+        console.warn(`⚠️  S3 file deletion notice for ${fileUrl}:`, err.message);
+      }
+    }
+  }
+
+  // ── Local Disk Handling ───────────────────────────────────────────────────
+  if (fileUrl.includes('/uploads/')) {
+    try {
+      const relativePath = fileUrl.split('/uploads/')[1];
+      if (relativePath) {
+        const localPath = path.join(__dirname, '../public/uploads', relativePath);
+        if (fs.existsSync(localPath)) {
+          fs.unlinkSync(localPath);
+          console.log(`✅ Local file deleted: ${localPath}`);
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️  Local file deletion notice for ${fileUrl}:`, err.message);
+    }
+  }
+};
+
+module.exports = { uploadFile, deleteFile };

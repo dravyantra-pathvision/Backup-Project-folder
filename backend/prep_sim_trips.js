@@ -6,10 +6,10 @@ async function prepSimTrips() {
   try {
     console.log("Checking and preparing database vehicles, devices, drivers & trips for simulator...");
 
-    // Get default org uid
-    const userRes = await client.query(`SELECT uid FROM users LIMIT 1`);
+    // Get fleet owner uid for guruhugar0310@gmail.com
+    const userRes = await client.query(`SELECT uid FROM users WHERE email = 'guruhugar0310@gmail.com' LIMIT 1`);
     const uid = userRes.rows[0]?.uid || 'default_user';
-    console.log("Using organization UID:", uid);
+    console.log("Using organization UID:", uid, "for guruhugar0310@gmail.com");
 
     const vehicles = [
       { plate: 'KA 33 W 1234', device_id: 'DEV-001', driver: 'Rajesh Kumar', lat: 12.971598, lng: 77.594562, trip_id: 'TRIP-1001', from: 'Bangalore Depot', to: 'Electronic City' },
@@ -18,21 +18,21 @@ async function prepSimTrips() {
     ];
 
     for (const v of vehicles) {
-      // 1. Ensure device exists & is assigned
-      await client.query(`
-        INSERT INTO devices (device_id, device_type, status, assigned_organization, assigned_vehicle)
-        VALUES ($1, 'GPS Tracker', 'Active', $2, $3)
-        ON CONFLICT (device_id) DO UPDATE 
-        SET status = 'Active', assigned_organization = $2, assigned_vehicle = $3
-      `, [v.device_id, uid, v.plate]);
-
-      // 2. Ensure vehicle exists & device_id is linked
+      // 1. Ensure vehicle exists & device_id is linked
       await client.query(`
         INSERT INTO vehicles (plate, device_id, uid, driver, status, lat, lng, speed, fuel, is_active)
         VALUES ($1, $2, $3, $4, 'in_transit', $5, $6, 0, 50.0, true)
         ON CONFLICT (plate) DO UPDATE 
         SET device_id = $2, uid = $3, driver = $4, status = 'in_transit', lat = $5, lng = $6, speed = 0, is_active = true
       `, [v.plate, v.device_id, uid, v.driver, v.lat, v.lng]);
+
+      // 2. Ensure device exists & is assigned
+      await client.query(`
+        INSERT INTO devices (device_id, device_type, status, assigned_organization, assigned_vehicle)
+        VALUES ($1, 'GPS Tracker', 'Active', $2, $3)
+        ON CONFLICT (device_id) DO UPDATE 
+        SET status = 'Active', assigned_organization = $2, assigned_vehicle = $3
+      `, [v.device_id, uid, v.plate]);
 
       // 3. Ensure driver exists
       await client.query(`

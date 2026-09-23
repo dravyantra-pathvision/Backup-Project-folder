@@ -93,9 +93,11 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             icon: const Icon(LucideIcons.edit3),
             tooltip: 'Edit Profile',
             onPressed: () {
-              showDialog(
+              showModalBottomSheet(
                 context: context,
-                builder: (context) => DriverFormDialog(
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (context) => DriverFormBottomSheet(
                   engine: engine,
                   driver: driver,
                 ),

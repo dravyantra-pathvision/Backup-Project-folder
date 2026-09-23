@@ -13,15 +13,33 @@ class AlertsScreen extends StatefulWidget {
 
 class _AlertsScreenState extends State<AlertsScreen> {
   String _formatTime(String t) {
+    if (t.isEmpty || t == 'Now' || t == 'now') return 'Just now';
     try {
       final dt = DateTime.parse(t).toLocal();
-      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
-      final hr = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-      final min = dt.minute.toString().padLeft(2, '0');
-      final day = dt.day.toString().padLeft(2, '0');
-      final month = dt.month.toString().padLeft(2, '0');
-      return '$day/$month/${dt.year}, $hr:$min $ampm';
-    } catch(e) {
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+
+      if (diff.isNegative) return 'Just now';
+
+      if (diff.inSeconds < 60) {
+        return 'Just now';
+      } else if (diff.inMinutes < 60) {
+        return '${diff.inMinutes}m';
+      } else if (diff.inHours < 24) {
+        return '${diff.inHours}h';
+      } else if (diff.inDays < 7) {
+        return '${diff.inDays}d';
+      } else if (diff.inDays < 30) {
+        final w = (diff.inDays / 7).floor();
+        return '${w}w';
+      } else if (diff.inDays < 365) {
+        final m = (diff.inDays / 30).floor();
+        return '${m}mo';
+      } else {
+        final y = (diff.inDays / 365).floor();
+        return '${y}y';
+      }
+    } catch (e) {
       return t;
     }
   }

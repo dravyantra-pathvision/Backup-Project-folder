@@ -3,14 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../core/theme.dart';
 import '../models/engine.dart';
-import '../widgets/live_ticker.dart';
 import 'fuel_calculation_details_screen.dart';
 
 class FuelScreen extends StatefulWidget {
@@ -22,85 +18,6 @@ class FuelScreen extends StatefulWidget {
 
 class _FuelScreenState extends State<FuelScreen> {
   String _filter = 'all'; // all, suspect
-  List<Map<String, String>> _dynamicRates = [];
-  bool _loadingRates = true;
-  final TextEditingController _cityController = TextEditingController();
-  bool _searchingCity = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchRates();
-  }
-
-  Future<void> _fetchRates() async {
-    try {
-      final engine = Provider.of<DataEngine>(context, listen: false);
-      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
-      final response = await http.get(
-        Uri.parse('${engine.baseUrl}/api/fuel_logs/rates'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-      if (response.statusCode == 200) {
-        final List parsed = jsonDecode(response.body) as List;
-        if (mounted) {
-          setState(() {
-            _dynamicRates = parsed.map((item) {
-              final map = item as Map<String, dynamic>;
-              return {
-                'city': map['city']?.toString() ?? '',
-                'rate': map['rate']?.toString() ?? '',
-              };
-            }).toList();
-            _loadingRates = false;
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching fuel rates: $e');
-      if (mounted) {
-        setState(() {
-          _loadingRates = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _searchCityRate(String city) async {
-    if (city.isEmpty) return;
-    setState(() => _searchingCity = true);
-    try {
-      final engine = Provider.of<DataEngine>(context, listen: false);
-      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
-      final response = await http.get(
-        Uri.parse('${engine.baseUrl}/api/fuel_logs/rates?city=$city'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-      if (response.statusCode == 200) {
-        final List parsed = jsonDecode(response.body) as List;
-        if (mounted && parsed.isNotEmpty) {
-          final map = parsed[0] as Map<String, dynamic>;
-          setState(() {
-            _dynamicRates.insert(0, {
-              'city': map['city']?.toString() ?? '',
-              'rate': map['rate']?.toString() ?? '',
-            });
-            _searchingCity = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Found rate for $city!')));
-        }
-      }
-    } catch (e) {
-      debugPrint('Error searching city rate: $e');
-      if (mounted) setState(() => _searchingCity = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -122,8 +39,6 @@ class _FuelScreenState extends State<FuelScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildCityRatesBanner(),
-          const SizedBox(height: 16),
           Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -147,7 +62,6 @@ class _FuelScreenState extends State<FuelScreen> {
                     icon: const Icon(LucideIcons.download, size: 14),
                     label: const Text('Export CSV'),
                   ),
-
                 ],
               ),
             ],
@@ -178,64 +92,6 @@ class _FuelScreenState extends State<FuelScreen> {
           _buildLogsTable(logs),
         ],
       ),
-    );
-  }
-
-  Widget _buildCityRatesBanner() {
-    final rates = _dynamicRates.isNotEmpty 
-        ? _dynamicRates 
-        : [
-            {'city': 'Mumbai', 'rate': '₹89.97'},
-            {'city': 'Delhi', 'rate': '₹87.62'},
-            {'city': 'Bangalore', 'rate': '₹88.94'},
-            {'city': 'Chennai', 'rate': '₹90.12'},
-            {'city': 'Kolkata', 'rate': '₹90.76'},
-          ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _cityController,
-                decoration: InputDecoration(
-                  hintText: 'Search city for live fuel rate...',
-                  prefixIcon: const Icon(LucideIcons.search, size: 16),
-                  suffixIcon: _searchingCity
-                      ? const Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                        )
-                      : IconButton(
-                          icon: const Icon(LucideIcons.arrowRight, size: 16),
-                          onPressed: () => _searchCityRate(_cityController.text),
-                        ),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                onSubmitted: _searchCityRate,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        LiveTicker(
-          children: rates.map((r) {
-            return Padding(
-              padding: const EdgeInsets.only(right: 24),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(r['city']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                  const SizedBox(width: 4),
-                  Text(r['rate']!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ],
     );
   }
 

@@ -42,8 +42,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   /// If valid (session < 7 days old) → fetches onboarding status and routes appropriately.
   /// Otherwise → goes to login for fresh login.
   Future<void> _checkSessionAndNavigate() async {
-    // Wait at least 1.5s so the animation completes
-    await Future.delayed(const Duration(milliseconds: 1500));
+    // Wait 600ms for smooth splash presentation
+    await Future.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
 
     final role = await SessionManager.getValidSession();
@@ -52,7 +52,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     if (role != null) {
       try {
-        final status = await OnboardingService.getStatus();
+        final status = await OnboardingService.getStatus().timeout(const Duration(seconds: 3));
         if (!mounted) return;
         
         final orgStatus = status['status'];
@@ -67,9 +67,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           context.go('/onboarding-wizard');
         }
       } catch (e) {
-        debugPrint('Backend server unreachable during splash status check: $e');
-        // If session exists but AWS backend is down/crashing, enter Dashboard in Offline Mode
-        context.go('/dashboard');
+        debugPrint('Backend server status check skipped/timeout: $e');
+        // Fast fallback to dashboard
+        if (mounted) context.go('/dashboard');
       }
     } else {
       // No valid session — go to login

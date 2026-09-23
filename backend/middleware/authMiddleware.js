@@ -44,23 +44,29 @@ const verifyToken = async (req, res, next) => {
   let dbUid = uid;
 
   try {
+    let result;
     if (email) {
-      const result = await pool.query(
-        'SELECT uid, role FROM users WHERE email = $1 LIMIT 1',
-        [email]
+      result = await pool.query(
+        'SELECT uid, role, is_deleted, account_status FROM users WHERE email = $1 OR uid = $2 LIMIT 1',
+        [email, uid]
       );
-      if (result.rows.length > 0) {
-        if (result.rows[0].role) role = result.rows[0].role;
-        if (result.rows[0].uid) dbUid = result.rows[0].uid;
-      }
     } else {
-      const result = await pool.query(
-        'SELECT role FROM users WHERE uid = $1 LIMIT 1',
+      result = await pool.query(
+        'SELECT uid, role, is_deleted, account_status FROM users WHERE uid = $1 LIMIT 1',
         [uid]
       );
-      if (result.rows.length > 0 && result.rows[0].role) {
-        role = result.rows[0].role;
+    }
+
+    if (result.rows.length > 0) {
+      const userRow = result.rows[0];
+      if (userRow.is_deleted === true || userRow.account_status === 'Deleted') {
+        return res.status(403).json({
+          error: 'AccountHasBeenDeleted',
+          message: 'This account has been deleted and cannot be accessed.'
+        });
       }
+      if (userRow.role) role = userRow.role;
+      if (userRow.uid) dbUid = userRow.uid;
     }
   } catch (dbErr) {
     console.warn('[authMiddleware] DB lookup warning:', dbErr.message);

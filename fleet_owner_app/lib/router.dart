@@ -20,6 +20,11 @@ import 'screens/settings_screen.dart';
 import 'screens/support_tickets_screen.dart';
 import 'screens/create_ticket_screen.dart';
 import 'screens/ticket_detail_screen.dart';
+import 'screens/savings_wallet_screen.dart';
+import 'screens/carbon_analytics_screen.dart';
+import 'screens/fuel_consumed_screen.dart';
+import 'screens/fuel_loss_screen.dart';
+import 'screens/report_detail_screen.dart';
 import 'widgets/scaffold_with_nav.dart';
 
 import 'screens/onboarding/wizard_screen.dart';
@@ -201,6 +206,33 @@ final GoRouter appRouter = GoRouter(
           path: '/support/:id',
           pageBuilder: (context, state) =>
               buildNoTransitionPage(state: state, child: TicketDetailScreen(ticketNumber: state.pathParameters['id']!)),
+        ),
+        GoRoute(
+          path: '/savings-wallet',
+          pageBuilder: (context, state) =>
+              buildNoTransitionPage(state: state, child: const SavingsWalletScreen()),
+        ),
+        GoRoute(
+          path: '/carbon-analytics',
+          pageBuilder: (context, state) =>
+              buildNoTransitionPage(state: state, child: const CarbonAnalyticsScreen()),
+        ),
+        GoRoute(
+          path: '/fuel-consumed',
+          pageBuilder: (context, state) =>
+              buildNoTransitionPage(state: state, child: const FuelConsumedScreen()),
+        ),
+        GoRoute(
+          path: '/fuel-loss',
+          pageBuilder: (context, state) =>
+              buildNoTransitionPage(state: state, child: const FuelLossScreen()),
+        ),
+        GoRoute(
+          path: '/report-detail',
+          pageBuilder: (context, state) {
+            final type = state.uri.queryParameters['type'] ?? 'fleet_performance';
+            return buildNoTransitionPage(state: state, child: ReportDetailScreen(reportType: type));
+          },
         ),
       ],
     ),

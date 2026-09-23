@@ -713,6 +713,30 @@ const retryFirebaseCleanup = async (uid, adminId) => {
   }
 };
 
+const getDeletionRequests = async ({ page = 1, limit = 50 }) => {
+  const { offset, limit: l } = paginate(page, limit);
+  const countRes = await pool.query('SELECT COUNT(*) FROM account_deletion_requests');
+  const total = parseInt(countRes.rows[0].count, 10);
+
+  const { rows } = await pool.query(
+    `SELECT id, user_uid, org_uid, status, requested_at, started_at, completed_at, failed_at, retry_count, failure_code, idempotency_key
+     FROM account_deletion_requests
+     ORDER BY id DESC
+     LIMIT $1 OFFSET $2`,
+    [l, offset]
+  );
+
+  return {
+    requests: rows,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    },
+  };
+};
+
 module.exports = {
   getDashboardStats,
   getAllFleetOwners,
@@ -738,5 +762,6 @@ module.exports = {
   getActivityLogs,
   retryFirebaseCleanup,
   logSystemAudit,
+  getDeletionRequests,
 };
 

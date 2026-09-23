@@ -4,7 +4,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/theme.dart';
 import '../../core/session_manager.dart';
 import '../../services/onboarding_service.dart';
-
+import 'package:provider/provider.dart';
+import '../../models/engine.dart';
 import 'dart:async';
 
 class PendingApprovalScreen extends StatefulWidget {
@@ -44,7 +45,11 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen> {
       
       if (orgStatus == 'Approved') {
         _pollingTimer?.cancel();
-        context.go('/dashboard');
+        if (mounted) {
+          final engine = Provider.of<DataEngine>(context, listen: false);
+          await engine.loadProfileAndOrg();
+          if (mounted) context.go('/dashboard');
+        }
       } else if (orgStatus == 'Rejected') {
         _pollingTimer?.cancel();
         context.go('/rejected');

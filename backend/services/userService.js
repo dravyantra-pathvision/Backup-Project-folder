@@ -2,6 +2,18 @@
 const { pool } = require('../config/dbconfig');
 
 const syncUser = async (uid, email, fullName, role) => {
+  // Guard: Reject if UID is deleted
+  const uidCheck = await pool.query(`SELECT is_deleted, account_status FROM users WHERE uid = $1`, [uid]);
+  if (uidCheck.rows.length > 0) {
+    const uRow = uidCheck.rows[0];
+    if (uRow.is_deleted === true || uRow.account_status === 'Deleted') {
+      const err = new Error('This account has been deleted and cannot be accessed.');
+      err.statusCode = 403;
+      err.code = 'AccountHasBeenDeleted';
+      throw err;
+    }
+  }
+
   const existingEmail = await pool.query(`SELECT * FROM users WHERE email = $1`, [email]);
 
   if (existingEmail.rows.length > 0) {

@@ -260,10 +260,7 @@ class _TripsScreenState extends State<TripsScreen> {
                             if (t.status != 'completed' && t.tripCompleted != true) ...[
                               AnimatedTapButton(
                                 onTap: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (ctx) => _TripFormDialog(engine: context.read<DataEngine>(), trip: t),
-                                  );
+                                  _showTripForm(context, context.read<DataEngine>(), trip: t);
                                 },
                                 child: const Padding(
                                   padding: EdgeInsets.all(6),
@@ -365,24 +362,37 @@ class _TripsScreenState extends State<TripsScreen> {
     );
   }
 
-  void _showTripForm(BuildContext context, DataEngine engine) {
-    showDialog(
+  void _showTripForm(BuildContext context, DataEngine engine, {Trip? trip}) {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => _TripFormDialog(engine: engine),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => _TripFormBottomSheet(
+          engine: engine,
+          trip: trip,
+          scrollController: scrollController,
+        ),
+      ),
     );
   }
 }
 
-class _TripFormDialog extends StatefulWidget {
+class _TripFormBottomSheet extends StatefulWidget {
   final DataEngine engine;
   final Trip? trip;
-  const _TripFormDialog({required this.engine, this.trip});
+  final ScrollController? scrollController;
+  const _TripFormBottomSheet({required this.engine, this.trip, this.scrollController});
 
   @override
-  State<_TripFormDialog> createState() => _TripFormDialogState();
+  State<_TripFormBottomSheet> createState() => _TripFormBottomSheetState();
 }
 
-class _TripFormDialogState extends State<_TripFormDialog> {
+class _TripFormBottomSheetState extends State<_TripFormBottomSheet> {
   final _formKey = GlobalKey<FormState>();
   String? _selectedVehicle;
   String? _selectedDriver;
@@ -622,9 +632,20 @@ class _TripFormDialogState extends State<_TripFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // Build vehicle items: exclude vehicles already assigned to active trips
-    final allVehicles = widget.engine.vehicles.toList();
-    final assignedVehiclePlates = widget.engine.trips.where((t) => t.tripCompleted != true && t.status != 'completed' && t.vehicle.isNotEmpty).map((t) => t.vehicle.trim().toUpperCase()).toSet();
+    final engine = widget.engine;
+    final allVehicles = engine.vehicles;
+    final allDrivers = engine.drivers;
+
+    final assignedVehiclePlates = engine.trips
+        .where((t) => t.status == 'running' || t.status == 'idle' || t.status == 'pending' || t.status == 'not started')
+        .map((t) => t.vehicle.trim().toUpperCase())
+        .toSet();
+
+    final assignedDriverNames = engine.trips
+        .where((t) => t.status == 'running' || t.status == 'idle' || t.status == 'pending' || t.status == 'not started')
+        .map((t) => t.driver.trim().toLowerCase())
+        .toSet();
+
     final displayedVehicles = allVehicles.where((v) {
       final plate = v.plate.trim().toUpperCase();
       if (widget.trip != null && widget.trip!.vehicle == v.plate) return true;
@@ -633,9 +654,6 @@ class _TripFormDialogState extends State<_TripFormDialog> {
       return true;
     }).toList();
 
-    // Build driver items: exclude drivers assigned to active trips
-    final allDrivers = widget.engine.drivers.toList();
-    final assignedDriverNames = widget.engine.trips.where((t) => t.tripCompleted != true && t.status != 'completed' && t.driver.isNotEmpty).map((t) => t.driver.trim().toLowerCase()).toSet();
     final displayedDrivers = allDrivers.where((d) {
       final name = d.name.trim().toLowerCase();
       if (widget.trip != null && widget.trip!.driver == d.name) return true;
@@ -644,283 +662,317 @@ class _TripFormDialogState extends State<_TripFormDialog> {
       return true;
     }).toList();
 
-    return AlertDialog(
-      title: Text(widget.trip == null ? 'Schedule New Trip' : 'Edit Trip Details'),
-      content: SizedBox(
-        width: min(500, MediaQuery.of(context).size.width * 0.9),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  value: _selectedVehicle,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Select Vehicle'),
-                  items: displayedVehicles.map((v) {
-                    return DropdownMenuItem<String>(
-                      value: v.plate,
-                      child: Text('${v.plate} (${v.type})', overflow: TextOverflow.ellipsis),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => _selectedVehicle = val),
-                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _selectedDriver,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Select Driver'),
-                  items: displayedDrivers.map((d) {
-                    return DropdownMenuItem<String>(
-                      value: d.name,
-                      child: Text(d.name, overflow: TextOverflow.ellipsis),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => _selectedDriver = val),
-                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TextFormField(
-                            controller: _fromCtrl,
-                            readOnly: true,
-                            onTap: () async {
-                              final City? selected = await Navigator.push<City>(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => CitySearchScreen(
-                                    title: 'Leaving From',
-                                    recentCities: _getRecentCities(),
-                                  ),
-                                ),
-                              );
-                              if (selected != null) {
-                                setState(() {
-                                  _fromCity = selected;
-                                  _fromCtrl.text = selected.name;
-                                  _updateDistance();
-                                });
-                              }
-                            },
-                            decoration: InputDecoration(
-                              hintText: 'Leaving From',
-                              hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-                              prefixIcon: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Icon(LucideIcons.navigation, size: 20, color: Colors.grey.shade700),
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                            ),
-                            validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                          ),
-                          Divider(height: 1, thickness: 1, color: Colors.grey.shade200, indent: 16, endIndent: 16),
-                          TextFormField(
-                            controller: _toCtrl,
-                            readOnly: true,
-                            onTap: () async {
-                              final City? selected = await Navigator.push<City>(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => CitySearchScreen(
-                                    title: 'Going To',
-                                    recentCities: _getRecentCities(),
-                                  ),
-                                ),
-                              );
-                              if (selected != null) {
-                                setState(() {
-                                  _toCity = selected;
-                                  _toCtrl.text = selected.name;
-                                  _updateDistance();
-                                });
-                              }
-                            },
-                            decoration: InputDecoration(
-                              hintText: 'Going To',
-                              hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-                              prefixIcon: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Icon(LucideIcons.mapPin, size: 20, color: Colors.grey.shade700),
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                            ),
-                            validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Positioned(
-                      right: -6,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              final tmpCity = _fromCity;
-                              _fromCity = _toCity;
-                              _toCity = tmpCity;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-                              final tmp = _fromCtrl.text;
-                              _fromCtrl.text = _toCtrl.text;
-                              _toCtrl.text = tmp;
-                              _updateDistance();
-                            });
-                          },
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.grey.shade300),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 4, offset: const Offset(0, 2)),
-                              ],
-                            ),
-                            child: Icon(LucideIcons.arrowUpDown, size: 16, color: Colors.grey.shade700),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+    return Material(
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        padding: EdgeInsets.only(bottom: bottomInset + 16, top: 12, left: 20, right: 20),
+        child: Column(
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                if (_isCalculatingDistance || _calculatedDistance != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.ecoGreen.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.ecoGreen.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.route, size: 20, color: AppTheme.ecoGreen),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Calculated Distance', 
-                            style: TextStyle(color: AppTheme.textSecondary),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (_isCalculatingDistance)
-                          const SizedBox(
-                            width: 16, 
-                            height: 16, 
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.ecoGreen)
-                          )
-                        else
-                          Text(
-                            '$_calculatedDistance km', 
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.ecoGreen, fontSize: 16),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _ewayCtrl,
-                  decoration: const InputDecoration(labelText: 'e-Way Bill Number'),
-                  keyboardType: TextInputType.number,
-                  maxLength: 12,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return null;
-                    if (v.length != 12) return 'Must be exactly 12 digits';
-                    if (!RegExp(r'^\d+$').hasMatch(v)) return 'Must be numeric';
-                    return null;
-                  },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  widget.trip == null ? 'Schedule New Trip' : 'Edit Trip Details',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                 ),
-                const SizedBox(height: 12),
-                _buildUploadRow('e-Way Bill Document', _ewayUploaded, _ewayUploading, () => _pickAndUpload('eway')),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _clientCtrl,
-                  decoration: const InputDecoration(labelText: 'Client Name'),
-                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _loadCtrl,
-                  decoration: const InputDecoration(labelText: 'Load Type/Description'),
-                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                IconButton(
+                  icon: const Icon(LucideIcons.x, size: 20),
+                  onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: widget.scrollController,
+                child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: _selectedVehicle,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Select Vehicle'),
+                      items: displayedVehicles.map((v) {
+                        return DropdownMenuItem<String>(
+                          value: v.plate,
+                          child: Text('${v.plate} (${v.type})', overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _selectedVehicle = val),
+                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: _selectedDriver,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Select Driver'),
+                      items: displayedDrivers.map((d) {
+                        return DropdownMenuItem<String>(
+                          value: d.name,
+                          child: Text(d.name, overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _selectedDriver = val),
+                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextFormField(
+                                controller: _fromCtrl,
+                                readOnly: true,
+                                onTap: () async {
+                                  final City? selected = await Navigator.push<City>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CitySearchScreen(
+                                        title: 'Leaving From',
+                                        recentCities: _getRecentCities(),
+                                      ),
+                                    ),
+                                  );
+                                  if (selected != null) {
+                                    setState(() {
+                                      _fromCity = selected;
+                                      _fromCtrl.text = selected.name;
+                                      _updateDistance();
+                                    });
+                                  }
+                                },
+                                decoration: InputDecoration(
+                                  hintText: 'Leaving From',
+                                  hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Icon(LucideIcons.navigation, size: 20, color: Colors.grey.shade700),
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                                ),
+                                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                              ),
+                              Divider(height: 1, thickness: 1, color: Colors.grey.shade200, indent: 16, endIndent: 16),
+                              TextFormField(
+                                controller: _toCtrl,
+                                readOnly: true,
+                                onTap: () async {
+                                  final City? selected = await Navigator.push<City>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CitySearchScreen(
+                                        title: 'Going To',
+                                        recentCities: _getRecentCities(),
+                                      ),
+                                    ),
+                                  );
+                                  if (selected != null) {
+                                    setState(() {
+                                      _toCity = selected;
+                                      _toCtrl.text = selected.name;
+                                      _updateDistance();
+                                    });
+                                  }
+                                },
+                                decoration: InputDecoration(
+                                  hintText: 'Going To',
+                                  hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Icon(LucideIcons.mapPin, size: 20, color: Colors.grey.shade700),
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                                ),
+                                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Positioned(
+                          right: 20,
+                          top: 0,
+                          bottom: 0,
+                          child: Center(
+                            child: Material(
+                              elevation: 2,
+                              shape: const CircleBorder(),
+                              color: Colors.white,
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: () {
+                                  if (_fromCtrl.text.isNotEmpty && _toCtrl.text.isNotEmpty) {
+                                    setState(() {
+                                      final tempCity = _fromCity;
+                                      _fromCity = _toCity;
+                                      _toCity = tempCity;
+
+                                      final tempText = _fromCtrl.text;
+                                      _fromCtrl.text = _toCtrl.text;
+                                      _toCtrl.text = tempText;
+
+                                      _updateDistance();
+                                    });
+                                  }
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: Icon(LucideIcons.arrowUpDown, size: 18, color: AppTheme.primaryBlue),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_isCalculatingDistance || _calculatedDistance != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.ecoGreen.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Estimated Trip Distance:', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                            if (_isCalculatingDistance)
+                              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            else
+                              Text(
+                                '$_calculatedDistance km',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.ecoGreen, fontSize: 16),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _ewayCtrl,
+                      decoration: const InputDecoration(labelText: 'e-Way Bill Number'),
+                      keyboardType: TextInputType.number,
+                      maxLength: 12,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return null;
+                        if (v.length != 12) return 'Must be exactly 12 digits';
+                        if (!RegExp(r'^\d+$').hasMatch(v)) return 'Must be numeric';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildUploadRow('e-Way Bill Document', _ewayUploaded, _ewayUploading, () => _pickAndUpload('eway')),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _clientCtrl,
+                      decoration: const InputDecoration(labelText: 'Client Name'),
+                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _loadCtrl,
+                      decoration: const InputDecoration(labelText: 'Load Type/Description'),
+                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    if (_formKey.currentState!.validate()) {
+                      if (widget.trip == null) {
+                        widget.engine.addTrip(Trip(
+                          id: 'TRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
+                          vehicle: _selectedVehicle ?? '',
+                          driver: _selectedDriver ?? '',
+                          from: _fromCtrl.text,
+                          to: _toCtrl.text,
+                          load: _loadCtrl.text.trim(),
+                          client: _clientCtrl.text.trim(),
+                          status: 'not started',
+                          ewayBill: _ewayCtrl.text,
+                          ewayBillUrl: _ewayFileUrl ?? '',
+                          date: DateTime.now().toString().split(' ')[0],
+                          progress: 0.0,
+                          distance: _calculatedDistance ?? 0.0,
+                          waypoints: [],
+                          tollCount: 0,
+                          liveSpeed: 0.0,
+                          power: false,
+                          idleDuration: 0,
+                          tripCompleted: false,
+                        ));
+                        widget.engine.assignVehicle(_selectedDriver!, _selectedVehicle!);
+                      } else {
+                        widget.engine.updateTrip(widget.trip!.copyWith(
+                          vehicle: _selectedVehicle,
+                          driver: _selectedDriver,
+                          from: _fromCtrl.text,
+                          to: _toCtrl.text,
+                          load: _loadCtrl.text.trim(),
+                          client: _clientCtrl.text.trim(),
+                          ewayBill: _ewayCtrl.text,
+                          ewayBillUrl: _ewayFileUrl ?? widget.trip!.ewayBillUrl,
+                          distance: _calculatedDistance,
+                        ));
+                      }
+                      if (mounted) {
+                        await DialogUtils.showSuccessAnimation(context, widget.trip == null ? 'Trip Created!' : 'Trip Updated!');
+                        if (mounted) Navigator.pop(context);
+                      }
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.ecoGreen, foregroundColor: Colors.white),
+                  child: Text(widget.trip == null ? 'Dispatch Trip' : 'Save Trip'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary))),
-        ElevatedButton(
-          onPressed: () async {
-            if (_formKey.currentState!.validate()) {
-              if (widget.trip == null) {
-                widget.engine.addTrip(Trip(
-                  id: 'TRP-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
-                  vehicle: _selectedVehicle ?? '',
-                  driver: _selectedDriver ?? '',
-                  from: _fromCtrl.text,
-                  to: _toCtrl.text,
-                  load: _loadCtrl.text.trim(),
-                  client: _clientCtrl.text.trim(),
-                  status: 'not started', // Keep status default as not started!
-                  ewayBill: _ewayCtrl.text,
-                  ewayBillUrl: _ewayFileUrl ?? '',
-                  date: DateTime.now().toString().split(' ')[0],
-                  progress: 0.0,
-                  distance: _calculatedDistance ?? 0.0,
-                  waypoints: [],
-                  tollCount: 0,
-                  liveSpeed: 0.0,
-                  power: false,
-                  idleDuration: 0,
-                  tripCompleted: false,
-                ));
-                widget.engine.assignVehicle(_selectedDriver!, _selectedVehicle!);
-              } else {
-                widget.engine.updateTrip(widget.trip!.copyWith(
-                  vehicle: _selectedVehicle,
-                  driver: _selectedDriver,
-                  from: _fromCtrl.text,
-                  to: _toCtrl.text,
-                  load: _loadCtrl.text.trim(),
-                  client: _clientCtrl.text.trim(),
-                  ewayBill: _ewayCtrl.text,
-                  ewayBillUrl: _ewayFileUrl ?? widget.trip!.ewayBillUrl,
-                  distance: _calculatedDistance,
-                ));
-              }
-              if (mounted) {
-                await DialogUtils.showSuccessAnimation(context, widget.trip == null ? 'Trip Created!' : 'Trip Updated!');
-                if (mounted) Navigator.pop(context);
-              }
-            }
-          },
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.ecoGreen, foregroundColor: Colors.white),
-          child: Text(widget.trip == null ? 'Dispatch' : 'Save'),
-        ),
-      ],
-    );
-  }
+    ),
+  );
+}
 }
 
 class _TripDetailDrawer extends StatelessWidget {

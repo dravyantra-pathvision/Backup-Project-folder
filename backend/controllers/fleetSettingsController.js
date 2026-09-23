@@ -72,6 +72,11 @@ const putFleetSettings = async (req, res) => {
       harshBrakeDeltaKmh, rapidAccelDeltaKmh, heartbeatTimeoutSeconds,
     } = req.body;
 
+    const effectiveSpeed = overspeedThresholdKmh ?? speedThreshold ?? 80;
+    const effectiveFuelTheft = fuelTheftThresholdLiters ?? fuelDropThreshold ?? 3.0;
+    const effectiveIdleLimit = idleLimit ?? (idleWarningSeconds ? Math.round(idleWarningSeconds / 60) : 15);
+    const effectiveIdleWarnSec = idleWarningSeconds ?? (effectiveIdleLimit * 60);
+
     const result = await pool.query(
       `INSERT INTO fleet_settings (
         uid, speed_threshold, fuel_drop_threshold, idle_limit, fastag_threshold,
@@ -84,9 +89,9 @@ const putFleetSettings = async (req, res) => {
         updated_at
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
       ON CONFLICT (uid) DO UPDATE SET
-        speed_threshold              = COALESCE(EXCLUDED.speed_threshold,              fleet_settings.speed_threshold),
-        fuel_drop_threshold          = COALESCE(EXCLUDED.fuel_drop_threshold,          fleet_settings.fuel_drop_threshold),
-        idle_limit                   = COALESCE(EXCLUDED.idle_limit,                   fleet_settings.idle_limit),
+        speed_threshold              = EXCLUDED.speed_threshold,
+        fuel_drop_threshold          = EXCLUDED.fuel_drop_threshold,
+        idle_limit                   = EXCLUDED.idle_limit,
         fastag_threshold             = COALESCE(EXCLUDED.fastag_threshold,             fleet_settings.fastag_threshold),
         mileage_threshold            = COALESCE(EXCLUDED.mileage_threshold,            fleet_settings.mileage_threshold),
         whatsapp_enabled             = COALESCE(EXCLUDED.whatsapp_enabled,             fleet_settings.whatsapp_enabled),
@@ -100,9 +105,9 @@ const putFleetSettings = async (req, res) => {
         gps_max_jump_km              = COALESCE(EXCLUDED.gps_max_jump_km,              fleet_settings.gps_max_jump_km),
         fuel_noise_threshold_liters  = COALESCE(EXCLUDED.fuel_noise_threshold_liters,  fleet_settings.fuel_noise_threshold_liters),
         fuel_refill_threshold_liters = COALESCE(EXCLUDED.fuel_refill_threshold_liters, fleet_settings.fuel_refill_threshold_liters),
-        fuel_theft_threshold_liters  = COALESCE(EXCLUDED.fuel_theft_threshold_liters,  fleet_settings.fuel_theft_threshold_liters),
-        overspeed_threshold_kmh      = COALESCE(EXCLUDED.overspeed_threshold_kmh,      fleet_settings.overspeed_threshold_kmh),
-        idle_warning_seconds         = COALESCE(EXCLUDED.idle_warning_seconds,         fleet_settings.idle_warning_seconds),
+        fuel_theft_threshold_liters  = EXCLUDED.fuel_theft_threshold_liters,
+        overspeed_threshold_kmh      = EXCLUDED.overspeed_threshold_kmh,
+        idle_warning_seconds         = EXCLUDED.idle_warning_seconds,
         idle_critical_seconds        = COALESCE(EXCLUDED.idle_critical_seconds,        fleet_settings.idle_critical_seconds),
         harsh_brake_delta_kmh        = COALESCE(EXCLUDED.harsh_brake_delta_kmh,        fleet_settings.harsh_brake_delta_kmh),
         rapid_accel_delta_kmh        = COALESCE(EXCLUDED.rapid_accel_delta_kmh,        fleet_settings.rapid_accel_delta_kmh),
@@ -111,9 +116,9 @@ const putFleetSettings = async (req, res) => {
       RETURNING *`,
       [
         uid,
-        speedThreshold    ?? 80,
-        fuelDropThreshold ?? 5.0,
-        idleLimit         ?? 15,
+        effectiveSpeed,
+        effectiveFuelTheft,
+        effectiveIdleLimit,
         fastagThreshold   ?? 500,
         mileageThreshold  ?? 4.0,
         whatsappEnabled   ?? true,
@@ -127,9 +132,9 @@ const putFleetSettings = async (req, res) => {
         gpsMaxJumpKm               ?? null,
         fuelNoiseThresholdLiters   ?? null,
         fuelRefillThresholdLiters  ?? null,
-        fuelTheftThresholdLiters   ?? null,
-        overspeedThresholdKmh      ?? null,
-        idleWarningSeconds         ?? null,
+        effectiveFuelTheft,
+        effectiveSpeed,
+        effectiveIdleWarnSec,
         idleCriticalSeconds        ?? null,
         harshBrakeDeltaKmh         ?? null,
         rapidAccelDeltaKmh         ?? null,

@@ -155,10 +155,23 @@ const getSummary = async (req, res) => {
     let toDate   = to   || null;
 
     if (period && period !== 'custom') {
-      const { fleetStatsEngine } = require('../services/fleetStatsEngine');
-      const { from: pFrom, to: pTo } = require('../services/fleetStatsEngine').getPeriodDates(period);
-      if (pFrom) fromDate = pFrom.toISOString().split('T')[0];
-      if (pTo)   toDate   = pTo.toISOString().split('T')[0];
+      const { getPeriodDates } = require('../services/fleetStatsEngine');
+      const { from: pFrom, to: pTo } = getPeriodDates(period);
+      const formatDateLocal = (d) => {
+        if (!d) return null;
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      if (pFrom) fromDate = formatDateLocal(pFrom);
+      if (pTo) {
+        if (period === 'today') {
+          toDate = fromDate;
+        } else {
+          toDate = formatDateLocal(new Date(pTo.getTime() - 1000));
+        }
+      }
     }
 
     const summary = await tripService.getSummary(req.user.uid, fromDate, toDate);

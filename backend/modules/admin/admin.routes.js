@@ -43,7 +43,7 @@ router.patch('/fleetowners/:uid/status', adminController.updateFleetOwnerStatus)
 router.post('/fleetowners/:uid/restore', adminController.restoreFleetOwner);
 router.delete('/fleetowners/:uid/permanent', adminController.deleteFleetOwnerPermanent);
 router.delete('/fleetowners/:uid', adminController.deleteFleetOwner);
-router.post('/fleetowners/:uid/reset-password', adminController.resetFleetOwnerPassword);
+router.get('/deletion-requests', adminController.getDeletionRequests);
 
 // ── Organizations ─────────────────────────────────────────────────────────────
 router.get('/organizations', adminController.getAllOrganizations);

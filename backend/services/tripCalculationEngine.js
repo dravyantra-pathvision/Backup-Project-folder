@@ -72,12 +72,13 @@ async function update(trip, packet, gpsResult, fuelResult, idleResult, safetyRes
 
     // ── Accumulate deltas ───────────────────────────────────────────────────
     const { distanceDelta }               = gpsResult;
-    const { fuelConsumed, refillDetected } = fuelResult;
+    const { fuelConsumed, refillDetected, theftDetected, theftAmount } = fuelResult;
     const { idleDeltaSec, movingDeltaSec, runningDeltaSec } = idleResult;
     const { overspeedEvent, harshBrakingEvent, rapidAccelEvent } = safetyResult;
 
     // New cumulative values
     const newFuelUsed      = Number(trip.fuel_used              || 0) + fuelConsumed;
+    const newTheftLoss     = Number(trip.theft_fuel_loss         || 0) + (theftDetected ? Number(theftAmount || 0) : 0);
     const newOverspeed     = Number(trip.overspeed_events        || 0) + (overspeedEvent    ? 1 : 0);
     const newHarshBraking  = Number(trip.harsh_braking_events   || 0) + (harshBrakingEvent ? 1 : 0);
     const newRapidAccel    = Number(trip.rapid_accel_events      || 0) + (rapidAccelEvent   ? 1 : 0);
@@ -85,6 +86,8 @@ async function update(trip, packet, gpsResult, fuelResult, idleResult, safetyRes
     const newMaxSpeed      = Math.max(Number(trip.max_speed      || 0), Number(speed        || 0));
     const newCo2           = newFuelUsed * settings.co2FactorPerLiter;
     const newAlertCount    = Number(trip.alert_count             || 0); // alert increments handled by alertLifecycleService
+
+    trip.theft_fuel_loss   = newTheftLoss;
 
     const newTripScore = computeTripScore({
       overspeedEvents:    newOverspeed,
@@ -99,30 +102,32 @@ async function update(trip, packet, gpsResult, fuelResult, idleResult, safetyRes
       `UPDATE trips SET
          distance              = distance + $1,
          fuel_used             = $2,
-         total_idle_time       = total_idle_time + $3,
-         moving_time_seconds   = moving_time_seconds + $4,
-         running_time_seconds  = running_time_seconds + $5,
-         max_speed             = $6,
-         co2_emitted           = $7,
-         overspeed_events      = $8,
-         harsh_braking_events  = $9,
-         rapid_accel_events    = $10,
-         fuel_refill_count     = $11,
-         trip_score            = $12,
-         live_speed            = $13,
-         power                 = $14,
-         live_fuel_count       = $15,
-         status                = $16,
+         theft_fuel_loss       = GREATEST(COALESCE(theft_fuel_loss, 0.0), $3),
+         total_idle_time       = total_idle_time + $4,
+         moving_time_seconds   = moving_time_seconds + $5,
+         running_time_seconds  = running_time_seconds + $6,
+         max_speed             = $7,
+         co2_emitted           = $8,
+         overspeed_events      = $9,
+         harsh_braking_events  = $10,
+         rapid_accel_events    = $11,
+         fuel_refill_count     = $12,
+         trip_score            = $13,
+         live_speed            = $14,
+         power                 = $15,
+         live_fuel_count       = $16,
+         status                = $17,
          trip_state            = CASE
                                    WHEN trip_state NOT IN ('paused','completed','cancelled')
                                    THEN 'running'
                                    ELSE trip_state
                                  END,
          updated_at            = NOW()
-       WHERE id = $17`,
+       WHERE id = $18`,
       [
         distanceDelta,
         newFuelUsed,
+        newTheftLoss,
         Math.round(idleDeltaSec    || 0),
         Math.round(movingDeltaSec  || 0),
         Math.round(runningDeltaSec || 0),

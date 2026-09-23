@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import '../core/session_manager.dart';
 import 'support_tickets_screen.dart';
+import 'delete_account_screen.dart';
 import '../core/dialogs.dart';
 
 // ─── Toast Helper ───────────────────────────────────────────────────────────
@@ -137,6 +138,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'User Profile',
             'Personal settings and permissions',
             (context) => UserProfileSubScreen(engine: engine),
+          ),
+          _buildSettingTile(
+            context,
+            LucideIcons.userX,
+            'Delete Account',
+            'Permanently delete your account and fleet data',
+            (context) => const DeleteAccountScreen(),
           ),
           
           _buildSectionHeader('Preferences'),
@@ -533,6 +541,14 @@ class OrgProfileSubScreen extends StatefulWidget {
 }
 
 class _OrgProfileSubScreenState extends State<OrgProfileSubScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.engine.loadProfileAndOrg();
+    });
+  }
+
   bool _canEdit() {
     final role = widget.engine.user.role.toLowerCase();
     return role.contains('fleet') || role.contains('admin');

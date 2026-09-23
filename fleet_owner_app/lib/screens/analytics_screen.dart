@@ -1,11 +1,9 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -26,7 +24,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Consumer<DataEngine>(
         builder: (ctx, engine, _) {
           return SingleChildScrollView(
@@ -169,25 +167,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Widget _buildKpis(DataEngine engine) {
     final stats = engine.fleetStats;
-    if (stats == null) {
-      return const Padding(
-        padding: EdgeInsets.all(32.0),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
 
-    final totalKm = stats.distanceKm;
-    final avgMileage = stats.fuelConsumedL > 0 ? (totalKm / stats.fuelConsumedL) : 0.0;
-    final totalIdlePct = stats.tripCount > 0 
-        ? ((stats.idleTimeSeconds / 3600.0) / (stats.tripCount * 8) * 100).clamp(0, 100)
+    final double totalKm = stats?.distanceKm ?? engine.trips.fold<double>(0.0, (sum, t) => sum + t.distance);
+    final double totalFuel = stats?.fuelConsumedL ?? engine.trips.fold<double>(0.0, (sum, t) => sum + t.fuelUsed);
+    final double avgMileage = totalFuel > 0 ? (totalKm / totalFuel) : 0.0;
+
+    final int tripCount = stats?.tripCount ?? engine.trips.length;
+    final int totalIdleSec = stats?.idleTimeSeconds ?? engine.trips.fold<int>(0, (sum, t) => sum + t.idleDuration);
+    final double totalIdlePct = tripCount > 0 
+        ? ((totalIdleSec / 3600.0) / (tripCount * 8) * 100).clamp(0, 100)
         : 0.0;
-    final totalFuelCostK = (stats.fuelCostRupees / 100000.0);
+
+    final double totalFuelCost = stats?.fuelCostRupees ?? (totalFuel * engine.alertSettings.fuelPricePerLiter);
+    final double totalFuelCostK = (totalFuelCost / 100000.0);
 
     return Column(
       children: [
         Row(
           children: [
-            Expanded(child: _kpiCard('Total Fleet km', _formatNum(totalKm.round()), '${stats.tripCount} completed trips', AppTheme.primaryBlue)),
+            Expanded(child: _kpiCard('Total Fleet km', _formatNum(totalKm.round()), '$tripCount completed trips', AppTheme.primaryBlue)),
             const SizedBox(width: 12),
             Expanded(child: _kpiCard('Fleet Avg km/L', avgMileage.toStringAsFixed(1), 'km per liter', AppTheme.success)),
           ],
@@ -197,7 +195,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           children: [
             Expanded(child: _kpiCard('Fleet Idle %', '${totalIdlePct.toStringAsFixed(1)}%', 'avg idling', AppTheme.warning)),
             const SizedBox(width: 12),
-            Expanded(child: _kpiCard('Total Fuel Cost', '₹${totalFuelCostK.toStringAsFixed(1)}L', 'total spend', AppTheme.danger)),
+            Expanded(child: _kpiCard('Total Fuel Cost', totalFuelCost >= 100000 ? '₹${totalFuelCostK.toStringAsFixed(1)}L' : '₹${totalFuelCost.toStringAsFixed(0)}', 'total spend', AppTheme.danger)),
           ],
         ),
       ],
@@ -237,6 +235,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       tabs: [
         Tab(text: 'Fuel'),
         Tab(text: 'Mileage'),
+        Tab(text: 'Carbon'),
         Tab(text: 'Idle'),
         Tab(text: 'Driver'),
         Tab(text: 'Compliance'),
@@ -249,6 +248,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       children: [
         _buildFuelTab(engine),
         _buildMileageTab(engine),
+        _buildCarbonTab(engine),
         _buildIdleTab(engine),
         _buildDriverTab(engine),
         _buildComplianceTab(engine),
@@ -313,11 +313,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Widget _buildFuelTab(DataEngine engine) {
     final stats = engine.fleetStats;
-    if (stats == null) return const SizedBox.shrink();
-
-    final labels = _lastFiveMonthLabelsFromStats(stats.monthlyStats);
+    final labels = _lastFiveMonthLabelsFromStats(stats?.monthlyStats ?? []);
     final fuelPrice = engine.alertSettings.fuelPricePerLiter;
-    final costSpots = _buildMonthlySpotsFromStats(stats.monthlyStats, (m) => m.totalFuel * fuelPrice);
+    final costSpots = _buildMonthlySpotsFromStats(stats?.monthlyStats ?? [], (m) => m.totalFuel * fuelPrice);
     // Top stations from fuel logs
     final stationMap = <String, double>{};
     for (final f in engine.fuelLogs) {
@@ -353,12 +351,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Widget _buildMileageTab(DataEngine engine) {
     final stats = engine.fleetStats;
-    if (stats == null) return const SizedBox.shrink();
-
-    final labels = _lastFiveMonthLabelsFromStats(stats.monthlyStats);
-    // Rough monthly mileage can be derived or we just plot fuel loss here.
-    // Let's plot fuel loss inverted as mileage trend proxy, or 0 if missing.
-    final mileageSpots = _buildMonthlySpotsFromStats(stats.monthlyStats, (m) => m.totalFuel > 0 ? (100 - m.totalLoss/m.totalFuel) : 0);
+    final labels = _lastFiveMonthLabelsFromStats(stats?.monthlyStats ?? []);
+    final mileageSpots = _buildMonthlySpotsFromStats(stats?.monthlyStats ?? [], (m) => m.totalFuel > 0 ? (100 - m.totalLoss/m.totalFuel) : 0);
     final sortedByMileage = List<Trip>.from(engine.trips.where((t) => t.currentMileage > 0))
       ..sort((a, b) => b.currentMileage.compareTo(a.currentMileage));
 
@@ -388,12 +382,127 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  Widget _buildCarbonTab(DataEngine engine) {
+    final stats = engine.fleetStats;
+    final fuelSaved = stats?.fuelSavedLiters ?? engine.savingsLiters.toDouble();
+    final co2Avoided = stats?.co2AvoidedKg ?? (fuelSaved * 2.68);
+    final carbonReduced = stats?.carbonReducedKg ?? (co2Avoided * (12.0 / 44.0));
+
+    final vehicleCarbon = <String, Map<String, double>>{};
+    for (final t in engine.trips) {
+      if (t.fuelSaved > 0) {
+        final current = vehicleCarbon[t.vehicle] ?? {'fuelSaved': 0.0, 'co2': 0.0, 'carbon': 0.0};
+        final saved = current['fuelSaved']! + t.fuelSaved;
+        final co2 = saved * 2.68;
+        final carbon = co2 * (12.0 / 44.0);
+        vehicleCarbon[t.vehicle] = {
+          'fuelSaved': saved,
+          'co2': co2,
+          'carbon': carbon,
+        };
+      }
+    }
+
+    final vehicleList = vehicleCarbon.entries.toList()
+      ..sort((a, b) => b.value['co2']!.compareTo(a.value['co2']!));
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(LucideIcons.leaf, color: AppTheme.success, size: 18),
+                  SizedBox(width: 8),
+                  Text('Carbon Reduction & Decarbonization Metrics', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.success.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.success.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('CO₂ Avoided', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          Text('${co2Avoided.toStringAsFixed(2)} kg CO₂', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.success)),
+                          const SizedBox(height: 4),
+                          Text('Calculated from ${fuelSaved.toStringAsFixed(1)} L fuel saved', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryBlue.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.primaryBlue.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Carbon (C) Reduced', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          Text('${carbonReduced.toStringAsFixed(2)} kg C', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue)),
+                          const SizedBox(height: 4),
+                          const Text('Pure Carbon (12/44 of CO₂ avoided)', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Methodology: Decarbonization metrics are calculated strictly from verified fuel savings (Diesel factor: 2.68 kg CO₂ / Liter, Carbon mass fraction: 27.27%). Detected fuel waste is not counted as carbon reduction.',
+                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontStyle: FontStyle.italic),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text('Vehicle-wise Carbon Reduction Breakdown', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              vehicleList.isEmpty
+                  ? const Text('No vehicle fuel savings recorded yet for carbon calculations.', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12))
+                  : _buildDataTable(
+                      ['Vehicle', 'Fuel Saved (L)', 'CO₂ Avoided (kg CO₂)', 'Carbon Reduced (kg C)'],
+                      vehicleList.map((e) => [
+                        e.key,
+                        '${e.value['fuelSaved']!.toStringAsFixed(1)} L',
+                        '${e.value['co2']!.toStringAsFixed(2)} kg',
+                        '${e.value['carbon']!.toStringAsFixed(2)} kg C',
+                      ]).toList(),
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildIdleTab(DataEngine engine) {
     final stats = engine.fleetStats;
-    if (stats == null) return const SizedBox.shrink();
-
-    final labels = _lastFiveMonthLabelsFromStats(stats.monthlyStats);
-    final idleSpots = _buildMonthlySpotsFromStats(stats.monthlyStats, (m) => m.idleWasted);
+    final labels = _lastFiveMonthLabelsFromStats(stats?.monthlyStats ?? []);
+    final idleSpots = _buildMonthlySpotsFromStats(stats?.monthlyStats ?? [], (m) => m.idleWasted);
     final sortedByIdle = List<Trip>.from(engine.trips)..sort((a, b) => b.idleDuration.compareTo(a.idleDuration));
 
     return Card(

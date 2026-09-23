@@ -23,26 +23,29 @@ const generateReport = async (req, res) => {
 
     switch (type) {
       case 'fleet_summary':
-      case 'daily_fleet_summary': {
+      case 'daily_fleet_summary':
+      case 'fleet_performance': {
         const r = await pool.query(`SELECT id,vehicle,driver,from_location,to_location,status,distance,fuel_used,date FROM trips WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC LIMIT 500`, [uid]);
         fields = ['id','vehicle','driver','from_location','to_location','status','distance','fuel_used','date'];
         data = r.rows;
-        filename = 'fleet_summary';
+        filename = 'fleet_performance';
         break;
       }
-      case 'driver_compliance': {
+      case 'driver_compliance':
+      case 'driver_performance': {
         const r = await pool.query(`SELECT id,name,phone,lic,lic_exp,score,trips,rating,status FROM drivers WHERE uid=$1 ORDER BY name`, [uid]);
         fields = ['id','name','phone','lic','lic_exp','score','trips','rating','status'];
         data = r.rows;
-        filename = 'driver_compliance';
+        filename = 'driver_performance';
         break;
       }
       case 'fuel_audit':
-      case 'monthly_fuel_audit': {
+      case 'monthly_fuel_audit':
+      case 'fuel_savings': {
         const r = await pool.query(`SELECT id,vehicle,driver,station,liters,rate,cost,odometer,date,is_suspect,suspect_reason FROM fuel_logs WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC`, [uid]);
         fields = ['id','vehicle','driver','station','liters','rate','cost','odometer','date','is_suspect','suspect_reason'];
         data = r.rows;
-        filename = 'fuel_audit';
+        filename = 'fuel_savings';
         break;
       }
       case 'expense_toll': {
@@ -59,18 +62,27 @@ const generateReport = async (req, res) => {
         filename = 'vehicle_health';
         break;
       }
-      case 'trip_efficiency': {
+      case 'trip_efficiency':
+      case 'trip_activity': {
         const r = await pool.query(`SELECT id,vehicle,driver,from_location,to_location,distance,fuel_used,delay_minutes,score,status FROM trips WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC`, [uid]);
         fields = ['id','vehicle','driver','from_location','to_location','distance','fuel_used','delay_minutes','score','status'];
         data = r.rows;
-        filename = 'trip_efficiency';
+        filename = 'trip_activity';
         break;
       }
-      case 'idle_analysis': {
+      case 'idle_analysis':
+      case 'fuel_loss': {
         const r = await pool.query(`SELECT id,vehicle,driver,idle_duration,status,date FROM trips WHERE uid=$1 ${dateFilter} ORDER BY idle_duration DESC`, [uid]);
         fields = ['id','vehicle','driver','idle_duration','status','date'];
         data = r.rows;
-        filename = 'idle_analysis';
+        filename = 'fuel_loss';
+        break;
+      }
+      case 'carbon_impact': {
+        const r = await pool.query(`SELECT id,vehicle,driver,distance,fuel_used,COALESCE(fuel_saved, 0) AS fuel_saved_l, (COALESCE(fuel_saved, 0)*2.68)::numeric(10,2) AS co2_avoided_kg FROM trips WHERE uid=$1 ${dateFilter} ORDER BY created_at DESC`, [uid]);
+        fields = ['id','vehicle','driver','distance','fuel_used','fuel_saved_l','co2_avoided_kg'];
+        data = r.rows;
+        filename = 'carbon_impact';
         break;
       }
       case 'alert_history': {

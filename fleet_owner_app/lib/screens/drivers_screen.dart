@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -11,6 +12,7 @@ import '../core/dialogs.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../widgets/animated_widgets.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'driver_profile_screen.dart';
 
 class DriversScreen extends StatefulWidget {
@@ -252,24 +254,37 @@ class _DriversScreenState extends State<DriversScreen> {
   }
 
   void _showDriverForm(BuildContext context, DataEngine engine, {Driver? d}) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => DriverFormDialog(engine: engine, driver: d),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => DriverFormBottomSheet(
+          engine: engine,
+          driver: d,
+          scrollController: scrollController,
+        ),
+      ),
     );
   }
 }
 
-class DriverFormDialog extends StatefulWidget {
+class DriverFormBottomSheet extends StatefulWidget {
   final DataEngine engine;
   final Driver? driver;
+  final ScrollController? scrollController;
 
-  const DriverFormDialog({required this.engine, this.driver});
+  const DriverFormBottomSheet({super.key, required this.engine, this.driver, this.scrollController});
 
   @override
-  State<DriverFormDialog> createState() => DriverFormDialogState();
+  State<DriverFormBottomSheet> createState() => DriverFormBottomSheetState();
 }
 
-class DriverFormDialogState extends State<DriverFormDialog> {
+class DriverFormBottomSheetState extends State<DriverFormBottomSheet> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameCtrl;
   late TextEditingController _phoneCtrl;
@@ -358,15 +373,14 @@ class DriverFormDialogState extends State<DriverFormDialog> {
 
   Widget _buildUploadRow(String label, bool isUploaded, bool isUploading, VoidCallback onUpload, {String buttonLabel = 'Upload File'}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500))),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: isUploaded ? AppTheme.success.withOpacity(0.1) : null,
               foregroundColor: isUploaded ? AppTheme.success : null,
-              elevation: 0,
             ),
             icon: isUploading
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
@@ -382,7 +396,8 @@ class DriverFormDialogState extends State<DriverFormDialog> {
   Future<void> _pickAndUpload(String docType) async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
@@ -394,46 +409,55 @@ class DriverFormDialogState extends State<DriverFormDialog> {
       }
       if (bytes == null) return;
 
-      final driverName = _nameCtrl.text.trim().replaceAll(' ', '_');
-      final fileName = '${driverName}_${docType}_${DateTime.now().millisecondsSinceEpoch}.${file.extension}';
+      final driverName = _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim().replaceAll(' ', '_') : 'TEMP';
+      final fileName = 'driver_${docType}_${driverName}_${DateTime.now().millisecondsSinceEpoch}.${file.extension}';
 
       setState(() {
         if (docType == 'aadhar') _aadharUploading = true;
         if (docType == 'license') _licenseUploading = true;
       });
 
-      // Upload via backend (uses service_role key, bypasses RLS)
       final request = http.MultipartRequest(
         'POST',
         Uri.parse('${widget.engine.baseUrl}/api/upload?bucket=driver_docs'),
       );
-      final user = FirebaseAuth.instance.currentUser;
-      final token = await user?.getIdToken();
-      request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: fileName,
-      ));
+      final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+      if (idToken != null) {
+        request.headers['Authorization'] = 'Bearer $idToken';
+      }
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: fileName,
+        ),
+      );
+
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode != 200) {
-        throw Exception('Server error: ${response.body}');
-      }
-
-      final responseData = response.body;
-      final url = RegExp(r'"url":"([^"]+)"').firstMatch(responseData)?.group(1) ?? '';
-
-      setState(() {
-        if (docType == 'aadhar') { _aadharFileUrl = url; _aadharUploaded = true; _aadharUploading = false; }
-        if (docType == 'license') { _licenseFileUrl = url; _licenseUploaded = true; _licenseUploading = false; }
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$docType uploaded successfully!'), backgroundColor: AppTheme.success),
-        );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final fileUrl = data['fileUrl'] ?? data['url'];
+        setState(() {
+          if (docType == 'aadhar') {
+            _aadharFileUrl = fileUrl;
+            _aadharUploaded = true;
+            _aadharUploading = false;
+          } else if (docType == 'license') {
+            _licenseFileUrl = fileUrl;
+            _licenseUploaded = true;
+            _licenseUploading = false;
+          }
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${docType.toUpperCase()} document uploaded successfully!'), backgroundColor: AppTheme.success),
+          );
+        }
+      } else {
+        throw Exception('Upload failed: ${response.statusCode}');
       }
     } catch (e) {
       setState(() {
@@ -442,63 +466,92 @@ class DriverFormDialogState extends State<DriverFormDialog> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppTheme.danger),
+          SnackBar(content: Text('Failed to upload $docType: $e'), backgroundColor: AppTheme.danger),
         );
       }
     }
   }
-
   Future<void> _takePhoto() async {
     try {
       final picker = ImagePicker();
-      final XFile? photo = await picker.pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        maxWidth: 1024,
-        imageQuality: 50,
-      );
-      if (photo == null) return;
-      
+      final XFile? image = await picker.pickImage(source: ImageSource.camera, maxWidth: 1280, maxHeight: 1280, imageQuality: 70);
+      if (image == null) return;
+
       setState(() {
         _photoUploading = true;
       });
 
-      final bytes = await photo.readAsBytes();
-      final driverName = _nameCtrl.text.trim().replaceAll(' ', '_');
-      final fileName = '${driverName}_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      // ── Human Face Verification via ML Kit ─────────────────────────────────
+      final inputImage = InputImage.fromFilePath(image.path);
+      final options = FaceDetectorOptions(performanceMode: FaceDetectorMode.fast);
+      final faceDetector = FaceDetector(options: options);
+
+      bool hasHumanFace = false;
+      try {
+        final faces = await faceDetector.processImage(inputImage);
+        hasHumanFace = faces.isNotEmpty;
+      } catch (e) {
+        debugPrint('Face detection engine warning/error: $e');
+        hasHumanFace = true; 
+      } finally {
+        await faceDetector.close();
+      }
+
+      if (!hasHumanFace) {
+        setState(() {
+          _photoUploading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No human face detected! Please take a clear photo of the driver\'s face.'),
+              backgroundColor: AppTheme.danger,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      final bytes = await image.readAsBytes();
+      final driverName = _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim().replaceAll(' ', '_') : 'TEMP';
+      final fileName = 'driver_photo_${driverName}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       final request = http.MultipartRequest(
         'POST',
         Uri.parse('${widget.engine.baseUrl}/api/upload?bucket=driver_docs'),
       );
-      final user = FirebaseAuth.instance.currentUser;
-      final token = await user?.getIdToken();
-      request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: fileName,
-      ));
+      final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+      if (idToken != null) {
+        request.headers['Authorization'] = 'Bearer $idToken';
+      }
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: fileName,
+        ),
+      );
+
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode != 200) {
-        throw Exception('Server error: ${response.body}');
-      }
-
-      final responseData = response.body;
-      final url = RegExp(r'"url":"([^"]+)"').firstMatch(responseData)?.group(1) ?? '';
-
-      setState(() {
-        _photoFileUrl = url;
-        _photoUploaded = true;
-        _photoUploading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Driver photo captured successfully!'), backgroundColor: AppTheme.success),
-        );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final fileUrl = data['fileUrl'] ?? data['url'];
+        setState(() {
+          _photoFileUrl = fileUrl;
+          _photoUploaded = true;
+          _photoUploading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Driver face verified and photo uploaded successfully!'), backgroundColor: AppTheme.success),
+          );
+        }
+      } else {
+        throw Exception('Photo upload failed: ${response.statusCode}');
       }
     } catch (e) {
       setState(() {
@@ -538,7 +591,7 @@ class DriverFormDialogState extends State<DriverFormDialog> {
           blood: _selectedBloodGroup, 
           vehicle: '', 
           status: 'idle',
-          score: 0, mil: 0, idle: 0, trips: 0, harsh: 0, overSpeed: 0, deviation: 0, fuelEff: 100,
+          score: 100, mil: 4, idle: 0, trips: 0, harsh: 0, overSpeed: 0, deviation: 0, fuelEff: 100,
           rating: 5.0, home: _homeCtrl.text.trim().isNotEmpty ? _homeCtrl.text.trim() : 'N/A', onLeave: false,
           imageUrl: _photoFileUrl ?? '',
           aadharUrl: _aadharFileUrl ?? '',
@@ -568,106 +621,160 @@ class DriverFormDialogState extends State<DriverFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.driver == null ? 'Add New Driver' : 'Edit Driver'),
-      content: SizedBox(
-        width: 400,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Material(
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        padding: EdgeInsets.only(bottom: bottomInset + 16, top: 12, left: 20, right: 20),
+        child: Column(
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                TextFormField(
-                  controller: _nameCtrl, 
-                  decoration: const InputDecoration(labelText: 'Full Name'),
-                  validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                Text(
+                  widget.driver == null ? 'Add New Driver' : 'Edit Driver Details',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _ageCtrl, 
-                  decoration: const InputDecoration(labelText: 'Age'),
-                  keyboardType: TextInputType.number,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    final age = int.tryParse(v);
-                    if (age == null) return 'Invalid number';
-                    if (age <= 18) return 'Age must be greater than 18';
-                    return null;
-                  },
+                IconButton(
+                  icon: const Icon(LucideIcons.x, size: 20),
+                  onPressed: () => Navigator.pop(context),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _phoneCtrl, 
-                  decoration: const InputDecoration(labelText: 'Phone Number'),
-                  keyboardType: TextInputType.phone,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    final regExp = RegExp(r'^\+91 [6-9]\d{9}$');
-                    if (!regExp.hasMatch(v)) return 'Must be +91 followed by 10 digits starting with 6-9';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _expCtrl, 
-                  decoration: const InputDecoration(labelText: 'Experience (Years)'),
-                  keyboardType: TextInputType.number,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    if (int.tryParse(v) == null) return 'Invalid number';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(labelText: 'Blood Group'),
-                  value: _selectedBloodGroup,
-                  items: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (val) => setState(() => _selectedBloodGroup = val!),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _licCtrl, 
-                  decoration: const InputDecoration(labelText: 'Driving License Number'),
-                  textCapitalization: TextCapitalization.characters,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Required';
-                    if (!RegExp(r'^[A-Z]{2}[ -]?[0-9]{2}[ -]?[0-9]{4}[ -]?[0-9]{7}$', caseSensitive: false).hasMatch(v.trim())) {
-                      return 'Invalid DL format (e.g. KA01 20220000000)';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                _buildDateRow('License Expiry Date', _licExpDate, (date) => setState(() => _licExpDate = date)),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _homeCtrl,
-                  decoration: const InputDecoration(labelText: 'Home Address / Hometown (Optional)'),
-                ),
-                const SizedBox(height: 24),
-                const Text('Documents & Photos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const Divider(),
-                _buildUploadRow('Aadhar Card', _aadharUploaded, _aadharUploading, () => _pickAndUpload('aadhar')),
-                _buildUploadRow('Driving License', _licenseUploaded, _licenseUploading, () => _pickAndUpload('license')),
-                _buildUploadRow('Driver Photo (Camera Only)', _photoUploaded, _photoUploading, _takePhoto, buttonLabel: 'Take Photo'),
               ],
             ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: widget.scrollController,
+                child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      controller: _nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Full Name'),
+                      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _ageCtrl,
+                            decoration: const InputDecoration(labelText: 'Age'),
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return 'Required';
+                              final age = int.tryParse(v);
+                              if (age == null) return 'Invalid';
+                              if (age <= 18) return '> 18';
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _expCtrl,
+                            decoration: const InputDecoration(labelText: 'Experience (Years)'),
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return 'Required';
+                              if (int.tryParse(v) == null) return 'Invalid';
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _phoneCtrl,
+                      decoration: const InputDecoration(labelText: 'Phone Number (e.g. +91 9876543210)'),
+                      keyboardType: TextInputType.phone,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Required';
+                        final regExp = RegExp(r'^\+91 [6-9]\d{9}$');
+                        if (!regExp.hasMatch(v)) return 'Must be +91 followed by 10 digits starting with 6-9';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(labelText: 'Blood Group'),
+                      value: _selectedBloodGroup,
+                      items: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (val) => setState(() => _selectedBloodGroup = val!),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _licCtrl,
+                      decoration: const InputDecoration(labelText: 'Driving License Number'),
+                      textCapitalization: TextCapitalization.characters,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Required';
+                        if (!RegExp(r'^[A-Z]{2}[ -]?[0-9]{2}[ -]?[0-9]{4}[ -]?[0-9]{7}$', caseSensitive: false).hasMatch(v.trim())) {
+                          return 'Invalid DL format (e.g. KA01 20220000000)';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildDateRow('License Expiry Date', _licExpDate, (date) => setState(() => _licExpDate = date)),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _homeCtrl,
+                      decoration: const InputDecoration(labelText: 'Home Address / Hometown (Optional)'),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Documents & Photos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const Divider(),
+                    _buildUploadRow('Aadhar Card', _aadharUploaded, _aadharUploading, () => _pickAndUpload('aadhar')),
+                    _buildUploadRow('Driving License', _licenseUploaded, _licenseUploading, () => _pickAndUpload('license')),
+                    _buildUploadRow('Driver Photo (Camera Only)', _photoUploaded, _photoUploading, _takePhoto, buttonLabel: 'Take Photo'),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _save,
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
+                  child: const Text('Save Driver'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary))),
-        ElevatedButton(
-          onPressed: _save,
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
-          child: const Text('Save Driver')
-        ),
-      ],
-    );
-  }
+    ),
+  );
+}
 }
 
 class _DriverDetailDrawer extends StatelessWidget {

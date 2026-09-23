@@ -508,11 +508,11 @@ const getSummary = async (uid, fromDate, toDate) => {
   const params = [uid];
   if (fromDate) {
     params.push(fromDate);
-    where += ` AND date >= $${params.length}`;
+    where += ` AND (date >= $${params.length} OR created_at >= $${params.length}::date)`;
   }
   if (toDate) {
     params.push(toDate);
-    where += ` AND date <= $${params.length}`;
+    where += ` AND (date <= $${params.length} OR created_at < ($${params.length}::date + interval '1 day'))`;
   }
 
   const q = `SELECT COALESCE(SUM(fuel_used),0)::double precision AS total_fuel_used, COALESCE(SUM(fuel_wasted),0)::double precision AS total_fuel_wasted, COALESCE(SUM(fuel_saved),0)::double precision AS total_fuel_saved, COALESCE(SUM(money_wasted),0)::double precision AS total_money_wasted, COALESCE(SUM(money_saved),0)::double precision AS total_money_saved, COALESCE(SUM(total_idle_time),0)::double precision AS total_idle_minutes, COALESCE(SUM(idle_money_wasted),0)::double precision AS total_idle_rupees FROM trips ${where}`;

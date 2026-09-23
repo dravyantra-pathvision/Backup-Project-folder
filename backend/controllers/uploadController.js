@@ -4,10 +4,7 @@ const { handleError } = require('../utils/responseHandler');
 
 const uploadFile = async (req, res) => {
   try {
-    const { bucket } = req.query;
-    if (!bucket) {
-      return res.status(400).json({ error: 'bucket query param required' });
-    }
+    const bucket = req.query.bucket || req.body.bucket || 'general';
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }

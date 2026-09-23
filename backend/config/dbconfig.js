@@ -247,6 +247,76 @@ const initDB = async () => {
       );
     `);
 
+    // ── VEHICLE BASELINES ───────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS vehicle_baselines (
+        id SERIAL PRIMARY KEY,
+        uid VARCHAR(128) REFERENCES users(uid) ON DELETE CASCADE,
+        vehicle_id VARCHAR(50) NOT NULL,
+        baseline_start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        baseline_end_date TIMESTAMP,
+        baseline_duration_days INTEGER DEFAULT 7,
+        baseline_distance DOUBLE PRECISION DEFAULT 0.0,
+        baseline_fuel_consumed DOUBLE PRECISION DEFAULT 0.0,
+        baseline_efficiency DOUBLE PRECISION DEFAULT 4.0,
+        baseline_idle_hours DOUBLE PRECISION DEFAULT 0.0,
+        baseline_idle_fuel DOUBLE PRECISION DEFAULT 0.0,
+        baseline_overspeed_events INTEGER DEFAULT 0,
+        baseline_status VARCHAR(50) DEFAULT 'collecting',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(uid, vehicle_id)
+      );
+    `);
+
+    // ── FUEL LOSS EVENTS ─────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS fuel_loss_events (
+        id SERIAL PRIMARY KEY,
+        uid VARCHAR(128) REFERENCES users(uid) ON DELETE CASCADE,
+        vehicle_id VARCHAR(50) NOT NULL,
+        fuel_before DOUBLE PRECISION DEFAULT 0.0,
+        fuel_after DOUBLE PRECISION DEFAULT 0.0,
+        loss_liters DOUBLE PRECISION DEFAULT 0.0,
+        loss_rupees DOUBLE PRECISION DEFAULT 0.0,
+        engine_status VARCHAR(50) DEFAULT 'OFF',
+        vehicle_speed INTEGER DEFAULT 0,
+        event_status VARCHAR(50) DEFAULT 'detected',
+        is_prevented BOOLEAN DEFAULT FALSE,
+        event_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ── MONTHLY SAVINGS WALLET SNAPSHOTS ────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS monthly_savings_wallet (
+        id SERIAL PRIMARY KEY,
+        uid VARCHAR(128) REFERENCES users(uid) ON DELETE CASCADE,
+        month_year VARCHAR(7) NOT NULL,
+        verified_savings_liters DOUBLE PRECISION DEFAULT 0.0,
+        verified_savings_rupees DOUBLE PRECISION DEFAULT 0.0,
+        prevented_loss_liters DOUBLE PRECISION DEFAULT 0.0,
+        prevented_loss_rupees DOUBLE PRECISION DEFAULT 0.0,
+        prevented_events INTEGER DEFAULT 0,
+        identified_waste_liters DOUBLE PRECISION DEFAULT 0.0,
+        identified_waste_rupees DOUBLE PRECISION DEFAULT 0.0,
+        idle_waste_liters DOUBLE PRECISION DEFAULT 0.0,
+        idle_waste_rupees DOUBLE PRECISION DEFAULT 0.0,
+        speeding_waste_liters DOUBLE PRECISION DEFAULT 0.0,
+        speeding_waste_rupees DOUBLE PRECISION DEFAULT 0.0,
+        speeding_events INTEGER DEFAULT 0,
+        theft_waste_liters DOUBLE PRECISION DEFAULT 0.0,
+        theft_waste_rupees DOUBLE PRECISION DEFAULT 0.0,
+        theft_events INTEGER DEFAULT 0,
+        vehicle_breakdown JSONB DEFAULT '[]',
+        status VARCHAR(50) DEFAULT 'in_progress',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(uid, month_year)
+      );
+    `);
+
     // ── DEVICES (IoT Management) ────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS devices (
@@ -436,7 +506,6 @@ const initDB = async () => {
     await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_price_per_liter DOUBLE PRECISION DEFAULT 92.0;`);
     await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS co2_factor_per_liter DOUBLE PRECISION DEFAULT 2.68;`);
     await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS gps_drift_threshold_km DOUBLE PRECISION DEFAULT 0.05;`);
-    await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS gps_max_jump_km DOUBLE PRECISION DEFAULT 5.0;`);
     await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_noise_threshold_liters DOUBLE PRECISION DEFAULT 1.5;`);
     await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_refill_threshold_liters DOUBLE PRECISION DEFAULT 5.0;`);
     await client.query(`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS fuel_theft_threshold_liters DOUBLE PRECISION DEFAULT 3.0;`);
@@ -468,16 +537,19 @@ const initDB = async () => {
       CREATE OR REPLACE FUNCTION compute_trip_metrics()
       RETURNS trigger AS $$
       DECLARE
+        dist_delta DOUBLE PRECISION := 0.0;
+        fuel_used_delta DOUBLE PRECISION := 0.0;
+        baseline_fuel_delta DOUBLE PRECISION := 0.0;
+        speeding_wasted_delta DOUBLE PRECISION := 0.0;
         baseline_mileage DOUBLE PRECISION;
-        idle_threshold INTEGER;
-        baseline_fuel DOUBLE PRECISION;
-        actual_fuel DOUBLE PRECISION;
+        idle_threshold_mins DOUBLE PRECISION;
+        idle_threshold_secs DOUBLE PRECISION;
         fprice DOUBLE PRECISION;
-        mileage_fuel_wasted DOUBLE PRECISION;
         idle_fuel_wasted DOUBLE PRECISION;
+        idle_time_above_thresh DOUBLE PRECISION;
       BEGIN
-        -- If trip is not started or created, keep all metrics at 0
-        IF NEW.status = 'not started' OR NEW.status = 'created' THEN
+        -- If trip is not started or created, clear metrics (for reset)
+        IF NEW.status = 'not started' OR NEW.status = 'created' OR (COALESCE(NEW.distance, 0) = 0 AND COALESCE(NEW.fuel_used, 0) = 0 AND COALESCE(NEW.theft_fuel_loss, 0) = 0 AND TG_OP = 'UPDATE' AND COALESCE(OLD.distance, 0) = 0) THEN
           NEW.distance := 0.0;
           NEW.fuel_used := 0.0;
           NEW.fuel_saved := 0.0;
@@ -485,97 +557,108 @@ const initDB = async () => {
           NEW.money_saved := 0.0;
           NEW.money_wasted := 0.0;
           NEW.idle_money_wasted := 0.0;
-          NEW.total_idle_time := 0;
-          NEW.live_speed := 0.0;
+          NEW.total_idle_time := COALESCE(NEW.total_idle_time, 0);
+          NEW.live_speed := COALESCE(NEW.live_speed, 0.0);
           NEW.progress := 0.0;
           NEW.speeding_fuel_wasted := 0.0;
           NEW.current_mileage := 0.0;
           NEW.theft_fuel_loss := 0.0;
           NEW.theft_money_loss := 0.0;
+          NEW.updated_at := CURRENT_TIMESTAMP;
           RETURN NEW;
         END IF;
 
-        -- Dynamically fetch baseline_mileage and idle_threshold applying user overrides
+        -- Dynamically load fleet owner settings from fleet_settings table
         SELECT 
-          COALESCE(u.low_mileage_override, fs.mileage_threshold, 3.5),
-          COALESCE(u.idle_duration_override, fs.idle_limit, 15)
-        INTO baseline_mileage, idle_threshold
+          COALESCE(u.low_mileage_override, fs.mileage_threshold, 4.0),
+          COALESCE(u.idle_duration_override, fs.idle_warning_seconds / 60.0, fs.idle_limit, 3.0),
+          COALESCE(fs.fuel_price_per_liter, 100.0)
+        INTO baseline_mileage, idle_threshold_mins, fprice
         FROM users u 
-        LEFT JOIN fleet_settings fs ON u.uid = fs.uid 
+        LEFT JOIN fleet_settings fs ON u.uid = NEW.uid 
         WHERE u.uid = NEW.uid;
 
-        -- Fallbacks in case the user row doesn't exist
-        IF baseline_mileage IS NULL THEN baseline_mileage := 3.5; END IF;
-        IF idle_threshold IS NULL THEN idle_threshold := 15; END IF;
+        -- Fallbacks in case user or settings row doesn't exist
+        IF baseline_mileage IS NULL OR baseline_mileage <= 0 THEN baseline_mileage := 4.0; END IF;
+        IF idle_threshold_mins IS NULL OR idle_threshold_mins <= 0 THEN idle_threshold_mins := 3.0; END IF;
+        IF fprice IS NULL OR fprice <= 0 THEN fprice := 100.0; END IF;
 
-        NEW.current_mileage := CASE
-          WHEN COALESCE(NEW.live_speed, 0) >= 40 AND NEW.live_speed < 60 THEN 4.38
-          WHEN COALESCE(NEW.live_speed, 0) < 70 THEN 3.5
-          WHEN NEW.live_speed < 80 THEN 3.15
-          WHEN NEW.live_speed < 90 THEN 2.98
-          WHEN NEW.live_speed < 100 THEN 2.8
-          WHEN NEW.live_speed < 110 THEN 2.63
-          WHEN NEW.live_speed < 120 THEN 2.45
-          ELSE 2.28
-        END;
-
-        NEW.fuel_used := CASE
-          WHEN COALESCE(NEW.distance, 0) > 0 AND NEW.current_mileage > 0
-            THEN ROUND((NEW.distance / NEW.current_mileage)::numeric, 2)
-          ELSE 0.0
-        END;
-
-        baseline_fuel := CASE
-          WHEN COALESCE(NEW.distance, 0) > 0
-            THEN ROUND((NEW.distance / baseline_mileage)::numeric, 2)
-          ELSE 0.0
-        END;
-        actual_fuel := COALESCE(NEW.fuel_used, 0.0);
-
-        NEW.fuel_saved := CASE
-          WHEN NEW.current_mileage > baseline_mileage AND baseline_fuel > actual_fuel
-            THEN ROUND((baseline_fuel - actual_fuel)::numeric, 2)
-          ELSE 0.0
-        END;
-
-        -- Fetch custom fuel price if not explicitly set on the trip
-        IF NEW.fuel_price_per_liter IS NULL OR NEW.fuel_price_per_liter = 100.0 OR NEW.fuel_price_per_liter = 0.0 THEN
-          SELECT COALESCE(fs.fuel_price_per_liter, 92.0) INTO fprice
-          FROM fleet_settings fs WHERE fs.uid = NEW.uid;
-          IF fprice IS NULL THEN fprice := 92.0; END IF;
+        -- Set trip fuel price snapshot
+        IF NEW.fuel_price_per_liter IS NULL OR NEW.fuel_price_per_liter <= 0 THEN
           NEW.fuel_price_per_liter := fprice;
         ELSE
           fprice := NEW.fuel_price_per_liter;
         END IF;
 
-        NEW.money_saved := CASE
-          WHEN NEW.fuel_saved > 0 THEN ROUND((NEW.fuel_saved * fprice)::numeric, 2)
-          ELSE 0.0
+        -- Speed-dependent degraded mileage curve
+        NEW.current_mileage := CASE
+          WHEN COALESCE(NEW.live_speed, 0) >= 40 AND NEW.live_speed < 60 THEN 4.38
+          WHEN COALESCE(NEW.live_speed, 0) < 70 THEN baseline_mileage
+          WHEN NEW.live_speed < 80 THEN 3.15
+          WHEN NEW.live_speed < 90 THEN 2.98
+          WHEN NEW.live_speed < 100 THEN 2.80
+          WHEN NEW.live_speed < 110 THEN 2.63
+          WHEN NEW.live_speed < 120 THEN 2.45
+          ELSE 2.28
         END;
 
-        NEW.idle_money_wasted := ROUND(COALESCE(NEW.total_idle_time, 0) * 1.7::numeric, 2);
+        -- Distance delta since last packet
+        IF TG_OP = 'UPDATE' THEN
+          dist_delta := GREATEST(0.0, COALESCE(NEW.distance, 0.0) - COALESCE(OLD.distance, 0.0));
+        ELSE
+          dist_delta := GREATEST(0.0, COALESCE(NEW.distance, 0.0));
+        END IF;
 
-        mileage_fuel_wasted := CASE
-          WHEN NEW.current_mileage < baseline_mileage
-            THEN GREATEST(ROUND((actual_fuel - baseline_fuel)::numeric, 2), 0.0)
-          ELSE 0.0
-        END;
+        -- ACCUMULATION LOGIC:
+        -- 1. Ensure theft_fuel_loss is strictly cumulative & non-decreasing
+        IF TG_OP = 'UPDATE' THEN
+          NEW.theft_fuel_loss := GREATEST(COALESCE(NEW.theft_fuel_loss, 0.0), COALESCE(OLD.theft_fuel_loss, 0.0));
+        ELSE
+          NEW.theft_fuel_loss := COALESCE(NEW.theft_fuel_loss, 0.0);
+        END IF;
+        NEW.theft_money_loss := ROUND((NEW.theft_fuel_loss * fprice)::numeric, 2);
+
+        -- 2. Accumulate incremental deltas for distance, fuel_used, speeding_fuel_wasted & fuel_saved
+        IF dist_delta > 0 AND NEW.current_mileage > 0 THEN
+          fuel_used_delta       := dist_delta / NEW.current_mileage;
+          baseline_fuel_delta   := dist_delta / baseline_mileage;
+          speeding_wasted_delta := GREATEST(0.0, fuel_used_delta - baseline_fuel_delta);
+
+          IF TG_OP = 'UPDATE' THEN
+            NEW.fuel_used            := ROUND((GREATEST(COALESCE(OLD.fuel_used, 0.0), COALESCE(NEW.fuel_used, 0.0)) + fuel_used_delta)::numeric, 2);
+            NEW.speeding_fuel_wasted := ROUND((COALESCE(OLD.speeding_fuel_wasted, 0.0) + speeding_wasted_delta)::numeric, 2);
+            IF NEW.current_mileage > baseline_mileage THEN
+              NEW.fuel_saved         := ROUND((COALESCE(OLD.fuel_saved, 0.0) + (baseline_fuel_delta - fuel_used_delta))::numeric, 2);
+            ELSE
+              NEW.fuel_saved         := COALESCE(OLD.fuel_saved, 0.0);
+            END IF;
+          ELSE
+            NEW.fuel_used            := ROUND(fuel_used_delta::numeric, 2);
+            NEW.speeding_fuel_wasted := ROUND(speeding_wasted_delta::numeric, 2);
+            NEW.fuel_saved           := CASE WHEN NEW.current_mileage > baseline_mileage THEN ROUND((baseline_fuel_delta - fuel_used_delta)::numeric, 2) ELSE 0.0 END;
+          END IF;
+        ELSE
+          IF TG_OP = 'UPDATE' THEN
+            NEW.fuel_used            := GREATEST(COALESCE(NEW.fuel_used, 0.0), COALESCE(OLD.fuel_used, 0.0));
+            NEW.speeding_fuel_wasted := GREATEST(COALESCE(NEW.speeding_fuel_wasted, 0.0), COALESCE(OLD.speeding_fuel_wasted, 0.0));
+            NEW.fuel_saved           := GREATEST(COALESCE(NEW.fuel_saved, 0.0), COALESCE(OLD.fuel_saved, 0.0));
+          END IF;
+        END IF;
+
+        NEW.money_saved := ROUND((NEW.fuel_saved * fprice)::numeric, 2);
+
+        -- 3. Idle Waste: Calculate ONLY on idle seconds exceeding owner's configured idle threshold
+        idle_threshold_secs    := idle_threshold_mins * 60.0;
+        idle_time_above_thresh := GREATEST(COALESCE(NEW.total_idle_time, 0) - idle_threshold_secs, 0.0);
+        NEW.idle_money_wasted  := ROUND(((idle_time_above_thresh / 60.0) * (1.70 * (fprice / 100.0)))::numeric, 2);
 
         idle_fuel_wasted := CASE
           WHEN fprice > 0 THEN ROUND((NEW.idle_money_wasted / fprice)::numeric, 2)
           ELSE 0.0
         END;
 
-        NEW.theft_money_loss := ROUND((COALESCE(NEW.theft_fuel_loss, 0.0) * fprice)::numeric, 2);
-
-        NEW.fuel_wasted := ROUND((mileage_fuel_wasted + idle_fuel_wasted + COALESCE(NEW.theft_fuel_loss, 0.0))::numeric, 2);
-
-        NEW.speeding_fuel_wasted := CASE
-          WHEN NEW.current_mileage IS NULL OR NEW.current_mileage <= 0
-               OR NEW.current_mileage >= baseline_mileage OR COALESCE(NEW.distance, 0) <= 0
-            THEN 0.0
-          ELSE ROUND(GREATEST((NEW.distance / NEW.current_mileage) - (NEW.distance / baseline_mileage), 0.0)::numeric, 2)
-        END;
+        -- 4. Total fuel wasted = speeding fuel wasted + idle fuel wasted + theft fuel loss
+        NEW.fuel_wasted := ROUND((NEW.speeding_fuel_wasted + idle_fuel_wasted + NEW.theft_fuel_loss)::numeric, 2);
 
         NEW.money_wasted := ROUND((NEW.fuel_wasted * fprice)::numeric, 2);
         NEW.updated_at := CURRENT_TIMESTAMP;
@@ -978,6 +1061,27 @@ const initDB = async () => {
       }
       console.log('✅ Subscription plans and features seeded successfully.');
     }
+
+    // ── ACCOUNT DELETION REQUESTS ───────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS account_deletion_requests (
+        id SERIAL PRIMARY KEY,
+        user_uid VARCHAR(128) NOT NULL,
+        org_uid VARCHAR(128),
+        status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        started_at TIMESTAMP,
+        completed_at TIMESTAMP,
+        failed_at TIMESTAMP,
+        retry_count INTEGER DEFAULT 0,
+        failure_code VARCHAR(100),
+        idempotency_key VARCHAR(128) UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_del_req_user ON account_deletion_requests(user_uid);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_del_req_status ON account_deletion_requests(status);`);
 
     console.log('✅ Database initialized successfully');
   } catch (err) {

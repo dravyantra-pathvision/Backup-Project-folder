@@ -277,6 +277,16 @@ const getActivityLogs = async (req, res) => {
   }
 };
 
+const getDeletionRequests = async (req, res) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const data = await adminService.getDeletionRequests({ page: Number(page), limit: Number(limit) });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    handleError(res, 'Error fetching deletion requests', err);
+  }
+};
+
 module.exports = {
   getDashboard,
   getAllFleetOwners,
@@ -303,4 +313,5 @@ module.exports = {
   getSettings,
   updateSettings,
   getActivityLogs,
+  getDeletionRequests,
 };

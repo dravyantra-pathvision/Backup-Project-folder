@@ -31,6 +31,18 @@ class FleetStats {
   final double distanceKm;
   final double fuelConsumedL;
   final double fuelCostRupees;
+  final double fuelSavedLiters;
+  final double verifiedSavingsRupees;
+  final double co2AvoidedKg;
+  final double carbonReducedKg;
+  final double idleLossRupees;
+  final double idleLossLiters;
+  final double speedingLossRupees;
+  final double speedingLossLiters;
+  final double theftLossRupees;
+  final double theftLossLiters;
+  final double totalLossRupees;
+  final double totalLossLiters;
   final int tripCount;
   final int completedTrips;
   final int alertCount;
@@ -46,8 +58,11 @@ class FleetStats {
   final List<MonthlyStat> monthlyStats;
 
   FleetStats({
-    required this.distanceKm, required this.fuelConsumedL, required this.fuelCostRupees, required this.tripCount,
-    required this.completedTrips, required this.alertCount, required this.idleTimeSeconds, required this.co2EmittedKg,
+    required this.distanceKm, required this.fuelConsumedL, required this.fuelCostRupees,
+    this.fuelSavedLiters = 0.0, this.verifiedSavingsRupees = 0.0, this.co2AvoidedKg = 0.0, this.carbonReducedKg = 0.0,
+    this.idleLossRupees = 0.0, this.idleLossLiters = 0.0, this.speedingLossRupees = 0.0, this.speedingLossLiters = 0.0,
+    this.theftLossRupees = 0.0, this.theftLossLiters = 0.0, this.totalLossRupees = 0.0, this.totalLossLiters = 0.0,
+    required this.tripCount, required this.completedTrips, required this.alertCount, required this.idleTimeSeconds, required this.co2EmittedKg,
     required this.vehiclesRunning, required this.vehiclesIdle, required this.vehiclesOffline, required this.devicesOnline,
     required this.devicesOffline, required this.devicesWeakSignal, required this.activeTripCount, required this.monthlyStats,
   });
@@ -56,6 +71,18 @@ class FleetStats {
     distanceKm: (map['distanceKm'] ?? 0).toDouble(),
     fuelConsumedL: (map['fuelConsumedL'] ?? 0).toDouble(),
     fuelCostRupees: (map['fuelCostRupees'] ?? 0).toDouble(),
+    fuelSavedLiters: (map['fuelSavedLiters'] ?? 0).toDouble(),
+    verifiedSavingsRupees: (map['verifiedSavingsRupees'] ?? 0).toDouble(),
+    co2AvoidedKg: (map['co2AvoidedKg'] ?? 0).toDouble(),
+    carbonReducedKg: (map['carbonReducedKg'] ?? 0).toDouble(),
+    idleLossRupees: (map['idleLossRupees'] ?? 0).toDouble(),
+    idleLossLiters: (map['idleLossLiters'] ?? 0).toDouble(),
+    speedingLossRupees: (map['speedingLossRupees'] ?? 0).toDouble(),
+    speedingLossLiters: (map['speedingLossLiters'] ?? 0).toDouble(),
+    theftLossRupees: (map['theftLossRupees'] ?? 0).toDouble(),
+    theftLossLiters: (map['theftLossLiters'] ?? 0).toDouble(),
+    totalLossRupees: (map['totalLossRupees'] ?? 0).toDouble(),
+    totalLossLiters: (map['totalLossLiters'] ?? 0).toDouble(),
     tripCount: map['tripCount'] ?? 0,
     completedTrips: map['completedTrips'] ?? 0,
     alertCount: map['alertCount'] ?? 0,
@@ -893,7 +920,211 @@ class FuelTrend {
   FuelTrend({required this.d, required this.used, required this.loss});
 }
 
+class SavingsWalletData {
+  final String periodLabel;
+  final double verifiedSavingsLiters;
+  final double verifiedSavingsRupees;
+  final double fuelLossPreventedLiters;
+  final double fuelLossPreventedRupees;
+  final int fuelLossPreventedEvents;
+  final double identifiedWasteLiters;
+  final double identifiedWasteRupees;
+  final double idleWasteLiters;
+  final double idleWasteRupees;
+  final double speedingWasteLiters;
+  final double speedingWasteRupees;
+  final int speedingEvents;
+  final double theftWasteLiters;
+  final double theftWasteRupees;
+  final int theftEvents;
+  final List<SavingsWalletVehicleItem> vehicleBreakdown;
+
+  SavingsWalletData({
+    required this.periodLabel,
+    required this.verifiedSavingsLiters,
+    required this.verifiedSavingsRupees,
+    required this.fuelLossPreventedLiters,
+    required this.fuelLossPreventedRupees,
+    required this.fuelLossPreventedEvents,
+    required this.identifiedWasteLiters,
+    required this.identifiedWasteRupees,
+    required this.idleWasteLiters,
+    required this.idleWasteRupees,
+    required this.speedingWasteLiters,
+    required this.speedingWasteRupees,
+    required this.speedingEvents,
+    required this.theftWasteLiters,
+    required this.theftWasteRupees,
+    required this.theftEvents,
+    required this.vehicleBreakdown,
+  });
+
+  factory SavingsWalletData.fromMap(Map<String, dynamic> map) {
+    final period = map['period'] ?? {};
+    final verified = map['verifiedSavings'] ?? {};
+    final prevented = map['fuelLossPrevented'] ?? {};
+    final waste = map['identifiedWaste'] ?? {};
+    final idling = waste['idling'] ?? {};
+    final speeding = waste['overspeeding'] ?? {};
+    final theft = waste['fuelTheft'] ?? {};
+    final list = (map['vehicleBreakdown'] as List?)
+            ?.map((x) => SavingsWalletVehicleItem.fromMap(x as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    return SavingsWalletData(
+      periodLabel: period['label'] ?? 'Selected Period',
+      verifiedSavingsLiters: (verified['fuelLiters'] ?? 0.0).toDouble(),
+      verifiedSavingsRupees: (verified['rupees'] ?? 0.0).toDouble(),
+      fuelLossPreventedLiters: (prevented['liters'] ?? 0.0).toDouble(),
+      fuelLossPreventedRupees: (prevented['rupees'] ?? 0.0).toDouble(),
+      fuelLossPreventedEvents: (prevented['events'] ?? 0).toInt(),
+      identifiedWasteLiters: (waste['totalLiters'] ?? 0.0).toDouble(),
+      identifiedWasteRupees: (waste['totalRupees'] ?? 0.0).toDouble(),
+      idleWasteLiters: (idling['liters'] ?? 0.0).toDouble(),
+      idleWasteRupees: (idling['rupees'] ?? 0.0).toDouble(),
+      speedingWasteLiters: (speeding['liters'] ?? 0.0).toDouble(),
+      speedingWasteRupees: (speeding['rupees'] ?? 0.0).toDouble(),
+      speedingEvents: (speeding['events'] ?? 0).toInt(),
+      theftWasteLiters: (theft['liters'] ?? 0.0).toDouble(),
+      theftWasteRupees: (theft['rupees'] ?? 0.0).toDouble(),
+      theftEvents: (theft['events'] ?? 0).toInt(),
+      vehicleBreakdown: list,
+    );
+  }
+}
+
+class SavingsWalletVehicleItem {
+  final String vehicleId;
+  final String registrationNumber;
+  final String baselineStatus; // 'collecting' | 'completed'
+  final double baselineEfficiency;
+  final double currentEfficiency;
+  final double distance;
+  final double fuelConsumed;
+  final double fuelSavedLiters;
+  final double fuelSavedRupees;
+  final double fuelLossPreventedLiters;
+  final double fuelLossPreventedRupees;
+  final double identifiedWasteLiters;
+  final double identifiedWasteRupees;
+
+  SavingsWalletVehicleItem({
+    required this.vehicleId,
+    required this.registrationNumber,
+    required this.baselineStatus,
+    required this.baselineEfficiency,
+    required this.currentEfficiency,
+    required this.distance,
+    required this.fuelConsumed,
+    required this.fuelSavedLiters,
+    required this.fuelSavedRupees,
+    required this.fuelLossPreventedLiters,
+    required this.fuelLossPreventedRupees,
+    required this.identifiedWasteLiters,
+    required this.identifiedWasteRupees,
+  });
+
+  factory SavingsWalletVehicleItem.fromMap(Map<String, dynamic> map) {
+    return SavingsWalletVehicleItem(
+      vehicleId: map['vehicleId'] ?? map['registrationNumber'] ?? '',
+      registrationNumber: map['registrationNumber'] ?? map['vehicleId'] ?? '',
+      baselineStatus: map['baselineStatus'] ?? 'collecting',
+      baselineEfficiency: (map['baselineEfficiency'] ?? 4.0).toDouble(),
+      currentEfficiency: (map['currentEfficiency'] ?? 0.0).toDouble(),
+      distance: (map['distance'] ?? 0.0).toDouble(),
+      fuelConsumed: (map['fuelConsumed'] ?? 0.0).toDouble(),
+      fuelSavedLiters: (map['fuelSavedLiters'] ?? 0.0).toDouble(),
+      fuelSavedRupees: (map['fuelSavedRupees'] ?? 0.0).toDouble(),
+      fuelLossPreventedLiters: (map['fuelLossPreventedLiters'] ?? 0.0).toDouble(),
+      fuelLossPreventedRupees: (map['fuelLossPreventedRupees'] ?? 0.0).toDouble(),
+      identifiedWasteLiters: (map['identifiedWasteLiters'] ?? 0.0).toDouble(),
+      identifiedWasteRupees: (map['identifiedWasteRupees'] ?? 0.0).toDouble(),
+    );
+  }
+}
+
+class DriverScorecardData {
+  final String driverId;
+  final String driverName;
+  final String assignedVehicle;
+  final int? score; // null if Insufficient Data
+  final String status;
+  final Map<String, dynamic> metrics;
+  final Map<String, dynamic> penalties;
+  final List<String> reasons;
+
+  DriverScorecardData({
+    required this.driverId,
+    required this.driverName,
+    required this.assignedVehicle,
+    this.score,
+    required this.status,
+    required this.metrics,
+    required this.penalties,
+    required this.reasons,
+  });
+
+  factory DriverScorecardData.fromMap(Map<String, dynamic> map) {
+    return DriverScorecardData(
+      driverId: map['driverId'] ?? '',
+      driverName: map['driverName'] ?? '',
+      assignedVehicle: map['assignedVehicle'] ?? 'Unassigned',
+      score: map['score'] != null ? (map['score'] as num).toInt() : null,
+      status: map['status'] ?? 'Insufficient Data',
+      metrics: (map['metrics'] as Map<String, dynamic>?) ?? {},
+      penalties: (map['penalties'] as Map<String, dynamic>?) ?? {},
+      reasons: (map['reasons'] as List?)?.map((e) => e.toString()).toList() ?? [],
+    );
+  }
+}
+
+class VehicleHealthData {
+  final String vehicleId;
+  final String registrationNumber;
+  final int? healthScore; // null if Insufficient Data
+  final String status;
+  final Map<String, dynamic> metrics;
+  final Map<String, dynamic> penalties;
+  final List<String> reasons;
+
+  VehicleHealthData({
+    required this.vehicleId,
+    required this.registrationNumber,
+    this.healthScore,
+    required this.status,
+    required this.metrics,
+    required this.penalties,
+    required this.reasons,
+  });
+
+  factory VehicleHealthData.fromMap(Map<String, dynamic> map) {
+    return VehicleHealthData(
+      vehicleId: map['vehicleId'] ?? map['registrationNumber'] ?? '',
+      registrationNumber: map['registrationNumber'] ?? map['vehicleId'] ?? '',
+      healthScore: map['healthScore'] != null ? (map['healthScore'] as num).toInt() : null,
+      status: map['status'] ?? 'Insufficient Data',
+      metrics: (map['metrics'] as Map<String, dynamic>?) ?? {},
+      penalties: (map['penalties'] as Map<String, dynamic>?) ?? {},
+      reasons: (map['reasons'] as List?)?.map((e) => e.toString()).toList() ?? [],
+    );
+  }
+}
+
 class DataEngine extends ChangeNotifier {
+  String selectedPeriod = 'today'; // 'today', 'week', 'month', 'last_month', 'custom'
+  DateTime? customPeriodStart;
+  DateTime? customPeriodEnd;
+  String companyName = 'DravYantra Fleet Logistics';
+
+  Future<void> setPeriod(String period, {DateTime? start, DateTime? end}) async {
+    selectedPeriod = period;
+    customPeriodStart = start;
+    customPeriodEnd = end;
+    notifyListeners();
+    await _loadSummary();
+  }
+
   int spend = 0;
   double loss = 0.0;
   int savings = 0;
@@ -1352,13 +1583,11 @@ class DataEngine extends ChangeNotifier {
     try {
       final headers = await _getHeaders();
       // Try a persisted backend override first (useful for physical devices), then localhost, then emulator IP.
-      final candidates = <String>[];
-      if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
-        candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/alerts');
-      }
-      candidates.add('$baseUrl/api/alerts');
-      candidates.add('$baseUrl/api/alerts');
-      candidates.add('$baseUrl/api/alerts');
+      final candidates = <String>[
+        '$baseUrl/api/alerts',
+        'http://10.0.2.2:3000/api/alerts',
+        'http://localhost:3000/api/alerts',
+      ];
 
       http.Response? response;
       Exception? lastErr;
@@ -1489,13 +1718,11 @@ class DataEngine extends ChangeNotifier {
   Future<bool> clearAllAlerts() async {
     try {
       final headers = await _getHeaders();
-      final candidates = <String>[];
-      if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
-        candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/alerts');
-      }
-      candidates.add('$baseUrl/api/alerts');
-      candidates.add('$baseUrl/api/alerts');
-      candidates.add('$baseUrl/api/alerts');
+      final candidates = <String>[
+        '$baseUrl/api/alerts',
+        'http://10.0.2.2:3000/api/alerts',
+        'http://localhost:3000/api/alerts',
+      ];
 
 
       http.Response? response;
@@ -1572,13 +1799,11 @@ class DataEngine extends ChangeNotifier {
     // Try to persist the alert to the backend so it becomes authoritative.
     try {
       final headers = await _getHeaders();
-      final candidates = <String>[];
-      if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
-        candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/alerts');
-      }
-      candidates.add('$baseUrl/api/alerts');
-      candidates.add('$baseUrl/api/alerts');
-      candidates.add('$baseUrl/api/alerts');
+      final candidates = <String>[
+        '$baseUrl/api/alerts',
+        'http://10.0.2.2:3000/api/alerts',
+        'http://localhost:3000/api/alerts',
+      ];
 
 
       http.Response? response;
@@ -1636,7 +1861,7 @@ class DataEngine extends ChangeNotifier {
     await _loadVehicles();
     await _loadDrivers();
     await _loadSummary();
-    await _loadProfileAndOrg();
+    await loadProfileAndOrg();
     await _loadFleetSettings();
   }
 
@@ -1711,19 +1936,20 @@ class DataEngine extends ChangeNotifier {
   }
 
   String get baseUrl {
-    // 1) Manually set override (e.g. from ConnectionSettings screen)
-    // Removed because we are now deployed to the live AWS server permanently.
-    // 2) Build-time dart-define (production cloud backend)
-    if (AppConfig.apiBaseUrl.isNotEmpty) {
-      return AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
+    // 1) Manually set override (e.g. from Settings -> Connection Settings)
+    if (backendBaseUrl != null && backendBaseUrl!.trim().isNotEmpty) {
+      // If local backend is enabled in AppConfig, ignore stale AWS EC2 or 10.0.2.2 overrides from SharedPreferences
+      if (AppConfig.useLocalBackend && (backendBaseUrl!.contains('16-112-99-7.nip.io') || backendBaseUrl!.contains('10.0.2.2'))) {
+        return AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
+      }
+      return backendBaseUrl!.trim().replaceAll(RegExp(r'/$'), '');
     }
-    // 3) Local dev fallback
-    // Use localhost so that adb reverse tcp:3000 tcp:3000 works on physical devices
+    // 2) AppConfig base URL (Local default or AWS Cloud)
     return AppConfig.apiBaseUrl.replaceAll(RegExp(r'/$'), '');
   }
 
 
-  Future<void> _loadProfileAndOrg() async {
+  Future<void> loadProfileAndOrg() async {
     try {
       final targetUrl = '$baseUrl/api/users/profile';
       debugPrint('HTTP GET Request to: $targetUrl');
@@ -1762,45 +1988,45 @@ class DataEngine extends ChangeNotifier {
         if (data['user'] != null) {
           final uMap = data['user'] as Map<String, dynamic>;
           user = UserAccount(
-            name: uMap['full_name'] ?? '',
-            email: uMap['email'] ?? '',
-            phone: uMap['phone'] ?? '',
-            role: uMap['role'] ?? 'Fleet Manager',
-            timezone: uMap['timezone'] ?? '',
+            name: uMap['full_name']?.toString() ?? '',
+            email: uMap['email']?.toString() ?? '',
+            phone: uMap['phone']?.toString() ?? '',
+            role: uMap['role']?.toString() ?? 'Fleet Manager',
+            timezone: uMap['timezone']?.toString() ?? '',
             speedLimitOverride: uMap['speed_limit_override'] as int?,
             fuelTheftLimitOverride: (uMap['fuel_theft_limit_override'] as num?)?.toDouble(),
             idleDurationOverride: uMap['idle_duration_override'] as int?,
             lowMileageOverride: (uMap['low_mileage_override'] as num?)?.toDouble(),
-            employeeId: uMap['employee_id'] as String?,
-            department: uMap['department'] as String?,
-            languagePref: uMap['language_pref'] as String?,
+            employeeId: uMap['employee_id']?.toString(),
+            department: uMap['department']?.toString(),
+            languagePref: uMap['language_pref']?.toString(),
             emailNotif: uMap['email_notif'] ?? true,
             smsNotif: uMap['sms_notif'] ?? false,
             pushNotif: uMap['push_notif'] ?? true,
-            lastLogin: uMap['last_login'],
+            lastLogin: uMap['last_login']?.toString(),
           );
           if (uMap['last_prompted_at'] != null) {
-            lastPromptedAt = DateTime.tryParse(uMap['last_prompted_at']);
+            lastPromptedAt = DateTime.tryParse(uMap['last_prompted_at'].toString());
           }
         }
         
         if (data['org'] != null) {
           final oMap = data['org'] as Map<String, dynamic>;
           org = Organization(
-            name: oMap['company_name'] ?? '',
-            gstin: oMap['gstin'] ?? '',
-            pan: oMap['pan'] ?? '',
-            city: oMap['city'] ?? '',
-            state: oMap['state'] ?? '',
-            contactPhone: oMap['contact_number'] ?? '',
-            contactEmail: oMap['contact_email'] ?? '',
-            address: oMap['address'],
-            country: oMap['country'] ?? 'India',
-            fleetSize: oMap['fleet_size'],
-            industryType: oMap['industry_type'],
-            orgAdmin: oMap['org_admin'],
-            subscriptionPlan: oMap['subscription_plan'],
-            accountCreationDate: oMap['account_creation_date'],
+            name: oMap['company_name']?.toString() ?? oMap['organization_name']?.toString() ?? '',
+            gstin: oMap['gstin']?.toString() ?? '',
+            pan: oMap['pan']?.toString() ?? '',
+            city: oMap['city']?.toString() ?? '',
+            state: oMap['state']?.toString() ?? '',
+            contactPhone: oMap['contact_number']?.toString() ?? oMap['company_phone']?.toString() ?? oMap['owner_phone']?.toString() ?? '',
+            contactEmail: oMap['contact_email']?.toString() ?? oMap['company_email']?.toString() ?? oMap['owner_email']?.toString() ?? '',
+            address: oMap['address']?.toString(),
+            country: oMap['country']?.toString() ?? 'India',
+            fleetSize: oMap['fleet_size']?.toString(),
+            industryType: oMap['industry_type']?.toString() ?? oMap['industry']?.toString(),
+            orgAdmin: oMap['org_admin']?.toString() ?? oMap['owner_name']?.toString(),
+            subscriptionPlan: oMap['subscription_plan']?.toString(),
+            accountCreationDate: oMap['account_creation_date']?.toString(),
           );
         } else {
           org = Organization(
@@ -1941,8 +2167,11 @@ class DataEngine extends ChangeNotifier {
         headers: headers,
         body: jsonEncode({
           'speedThreshold': newSettings.speedThreshold,
+          'overspeedThresholdKmh': newSettings.speedThreshold,
           'fuelDropThreshold': newSettings.fuelDropThreshold,
+          'fuelTheftThresholdLiters': newSettings.fuelDropThreshold,
           'idleLimit': newSettings.idleLimit,
+          'idleWarningSeconds': newSettings.idleLimit * 60,
           'fastagThreshold': newSettings.fastagThreshold,
           'mileageThreshold': newSettings.mileageThreshold,
           'fuelPricePerLiter': newSettings.fuelPricePerLiter,
@@ -2043,14 +2272,20 @@ class DataEngine extends ChangeNotifier {
       backendBaseUrl = prefs.getString('backend_base_url');
     } catch (_) {}
 
-    await _loadVehicles();
-    await _loadDrivers();
-    await _loadFuelLogs();
-    await _loadTrips();
-    await _loadSummary();
-    await _loadAlerts();
-    await _loadFleetSettings();
-    await _loadProfileAndOrg();
+    try {
+      await Future.wait([
+        _loadVehicles().timeout(const Duration(seconds: 4)),
+        _loadDrivers().timeout(const Duration(seconds: 4)),
+        _loadFuelLogs().timeout(const Duration(seconds: 4)),
+        _loadTrips().timeout(const Duration(seconds: 4)),
+        _loadSummary().timeout(const Duration(seconds: 4)),
+        _loadAlerts().timeout(const Duration(seconds: 4)),
+        _loadFleetSettings().timeout(const Duration(seconds: 4)),
+        loadProfileAndOrg().timeout(const Duration(seconds: 4)),
+      ]);
+    } catch (e) {
+      debugPrint('DataEngine init load completed: $e');
+    }
 
     // Poll backend periodically so database changes propagate into the UI.
     // 30s is sufficient — real-time telemetry updates come from the device push layer.
@@ -2113,13 +2348,11 @@ class DataEngine extends ChangeNotifier {
   Future<void> _loadFleetSettings() async {
     try {
       final headers = await _getHeaders();
-      final candidates = <String>[];
-      if (backendBaseUrl != null && backendBaseUrl!.isNotEmpty) {
-        candidates.add(backendBaseUrl!.replaceAll(RegExp(r'/$'), '') + '/api/fleet-settings');
-      }
-      candidates.add('$baseUrl/api/fleet-settings');
-      candidates.add('$baseUrl/api/fleet-settings');
-      candidates.add('$baseUrl/api/fleet-settings');
+      final candidates = <String>[
+        '$baseUrl/api/fleet-settings',
+        'http://10.0.2.2:3000/api/fleet-settings',
+        'http://localhost:3000/api/fleet-settings',
+      ];
 
 
       for (final u in candidates) {
@@ -2170,7 +2403,7 @@ class DataEngine extends ChangeNotifier {
       await _loadSummary();
       await _loadAlerts();
       await _loadFleetSettings();
-      await _loadProfileAndOrg();
+      await loadProfileAndOrg();
     }
     notifyListeners();
   }
@@ -2208,9 +2441,15 @@ class DataEngine extends ChangeNotifier {
 
   Future<void> _loadSummary() async {
     if (FirebaseAuth.instance.currentUser == null) return;
+    String query = 'period=$selectedPeriod';
+    if (selectedPeriod == 'custom') {
+      if (customPeriodStart != null) query += '&from=${customPeriodStart!.toIso8601String()}';
+      if (customPeriodEnd != null) query += '&to=${customPeriodEnd!.toIso8601String()}';
+    }
+
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('$baseUrl/api/trips/summary'), headers: headers);
+      final response = await http.get(Uri.parse('$baseUrl/api/trips/summary?$query'), headers: headers);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         spend = (data['totalFuelRupees'] ?? 0).toInt();
@@ -2232,13 +2471,100 @@ class DataEngine extends ChangeNotifier {
     }
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('$baseUrl/api/analytics/fleet?period=year'), headers: headers);
+      String query = 'period=$selectedPeriod';
+      if (selectedPeriod == 'custom') {
+        if (customPeriodStart != null) query += '&from=${customPeriodStart!.toIso8601String()}';
+        if (customPeriodEnd != null) query += '&to=${customPeriodEnd!.toIso8601String()}';
+      }
+      final response = await http.get(Uri.parse('$baseUrl/api/analytics/fleet?$query'), headers: headers);
       if (response.statusCode == 200) {
         fleetStats = FleetStats.fromMap(jsonDecode(response.body));
         notifyListeners();
       }
     } catch (e) {
       debugPrint('Error loading fleet stats: $e');
+    }
+
+    await Future.wait([
+      loadSavingsWallet(),
+      loadDriverScorecards(),
+      loadVehicleHealthScores(),
+    ]);
+  }
+
+  SavingsWalletData? savingsWalletData;
+  Map<String, DriverScorecardData> driverScorecards = {};
+  Map<String, VehicleHealthData> vehicleHealthScores = {};
+
+  Future<void> loadSavingsWallet() async {
+    try {
+      final headers = await _getHeaders();
+      String query = 'period=$selectedPeriod';
+      if (selectedPeriod == 'custom') {
+        if (customPeriodStart != null) query += '&from=${customPeriodStart!.toIso8601String()}';
+        if (customPeriodEnd != null) query += '&to=${customPeriodEnd!.toIso8601String()}';
+      }
+      final response = await http.get(Uri.parse('$baseUrl/api/analytics/savings-wallet?$query'), headers: headers);
+      if (response.statusCode == 200) {
+        savingsWalletData = SavingsWalletData.fromMap(jsonDecode(response.body));
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error loading savings wallet data: $e');
+    }
+  }
+
+  Future<void> loadDriverScorecards() async {
+    try {
+      final headers = await _getHeaders();
+      String query = 'period=$selectedPeriod';
+      if (selectedPeriod == 'custom') {
+        if (customPeriodStart != null) query += '&from=${customPeriodStart!.toIso8601String()}';
+        if (customPeriodEnd != null) query += '&to=${customPeriodEnd!.toIso8601String()}';
+      }
+      final response = await http.get(Uri.parse('$baseUrl/api/analytics/driver-scorecard?$query'), headers: headers);
+      if (response.statusCode == 200) {
+        final dynamic data = jsonDecode(response.body);
+        final map = <String, DriverScorecardData>{};
+        if (data is List) {
+          for (final item in data) {
+            final card = DriverScorecardData.fromMap(item as Map<String, dynamic>);
+            map[card.driverName] = card;
+            map[card.driverId] = card;
+          }
+        }
+        driverScorecards = map;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error loading driver scorecards: $e');
+    }
+  }
+
+  Future<void> loadVehicleHealthScores() async {
+    try {
+      final headers = await _getHeaders();
+      String query = 'period=$selectedPeriod';
+      if (selectedPeriod == 'custom') {
+        if (customPeriodStart != null) query += '&from=${customPeriodStart!.toIso8601String()}';
+        if (customPeriodEnd != null) query += '&to=${customPeriodEnd!.toIso8601String()}';
+      }
+      final response = await http.get(Uri.parse('$baseUrl/api/analytics/vehicle-health?$query'), headers: headers);
+      if (response.statusCode == 200) {
+        final dynamic data = jsonDecode(response.body);
+        final map = <String, VehicleHealthData>{};
+        if (data is List) {
+          for (final item in data) {
+            final vHealth = VehicleHealthData.fromMap(item as Map<String, dynamic>);
+            map[vHealth.registrationNumber] = vHealth;
+            map[vHealth.vehicleId] = vHealth;
+          }
+        }
+        vehicleHealthScores = map;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error loading vehicle health scores: $e');
     }
   }
 

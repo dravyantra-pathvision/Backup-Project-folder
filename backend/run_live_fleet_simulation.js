@@ -290,6 +290,12 @@ async function startLiveSimulation() {
         } else if (tick >= 25 && tick <= 35) {
           speed = 98;
           eventNotice = '🚨 [OVERSPEED EVENT > 90 km/h - Speeding Waste & Penalty]';
+        } else if (tick === 45) {
+          power = false;
+          speed = 0;
+          fuel = Math.min(100.0, fuel + 40.0);
+          currentFuels[i] = fuel;
+          eventNotice = '⛽ [FUEL REFILL EVENT - 40.0L Fuel Refill Detected!]';
         }
       }
 

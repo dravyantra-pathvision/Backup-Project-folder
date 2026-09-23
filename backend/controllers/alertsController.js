@@ -43,7 +43,7 @@ const createAlert = async (req, res) => {
     // Simulate Notification Push Dispatch
     try {
       const settingsRes = await pool.query(`SELECT whatsapp_enabled, sms_enabled, email_enabled, push_enabled FROM fleet_settings WHERE uid = $1`, [uid]);
-      const orgRes = await pool.query(`SELECT contact FROM organization WHERE uid = $1`, [uid]);
+      const orgRes = await pool.query(`SELECT contact_email AS contact FROM fleet_onboarding WHERE uid = $1`, [uid]);
       const userRes = await pool.query(`SELECT email, phone FROM users WHERE uid = $1`, [uid]);
       
       if (settingsRes.rows.length > 0) {

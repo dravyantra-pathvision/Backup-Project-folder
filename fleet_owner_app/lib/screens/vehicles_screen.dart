@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -421,24 +422,37 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   }
 
   void _showVehicleForm(BuildContext context, DataEngine engine, {Vehicle? v}) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => _VehicleFormDialog(engine: engine, vehicle: v),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => _VehicleFormBottomSheet(
+          engine: engine,
+          vehicle: v,
+          scrollController: scrollController,
+        ),
+      ),
     );
   }
 }
 
-class _VehicleFormDialog extends StatefulWidget {
+class _VehicleFormBottomSheet extends StatefulWidget {
   final DataEngine engine;
   final Vehicle? vehicle;
+  final ScrollController? scrollController;
 
-  const _VehicleFormDialog({required this.engine, this.vehicle});
+  const _VehicleFormBottomSheet({required this.engine, this.vehicle, this.scrollController});
 
   @override
-  State<_VehicleFormDialog> createState() => _VehicleFormDialogState();
+  State<_VehicleFormBottomSheet> createState() => _VehicleFormBottomSheetState();
 }
 
-class _VehicleFormDialogState extends State<_VehicleFormDialog> {
+class _VehicleFormBottomSheetState extends State<_VehicleFormBottomSheet> {
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
   late TextEditingController _plateCtrl;
@@ -538,15 +552,14 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
 
   Widget _buildUploadRow(String label, bool isUploaded, bool isUploading, VoidCallback onUpload) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary))),
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500))),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: isUploaded ? AppTheme.success.withOpacity(0.1) : null,
               foregroundColor: isUploaded ? AppTheme.success : null,
-              elevation: 0,
             ),
             icon: isUploading
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
@@ -562,7 +575,8 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   Future<void> _pickAndUpload(String docType) async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
@@ -574,8 +588,8 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
       }
       if (bytes == null) return;
 
-      final plate = _plateCtrl.text.trim().toUpperCase().replaceAll(' ', '_');
-      final fileName = '${plate}_${docType}_${DateTime.now().millisecondsSinceEpoch}.${file.extension}';
+      final plate = _plateCtrl.text.trim().isNotEmpty ? _plateCtrl.text.trim() : 'TEMP';
+      final fileName = 'vehicle_${docType}_${plate}_${DateTime.now().millisecondsSinceEpoch}.${file.extension}';
 
       setState(() {
         if (docType == 'rc') _rcUploading = true;
@@ -583,40 +597,51 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
         if (docType == 'puc') _pucUploading = true;
       });
 
-      // Upload via backend (uses service_role key, bypasses RLS)
       final request = http.MultipartRequest(
         'POST',
         Uri.parse('${widget.engine.baseUrl}/api/upload?bucket=vehicle_docs'),
       );
-      final user = FirebaseAuth.instance.currentUser;
-      final token = await user?.getIdToken();
-      request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: fileName,
-      ));
+      final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+      if (idToken != null) {
+        request.headers['Authorization'] = 'Bearer $idToken';
+      }
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: fileName,
+        ),
+      );
+
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode != 200) {
-        throw Exception('Server error: ${response.body}');
-      }
-
-      final responseData = response.body;
-      // Parse URL from JSON response {"url": "..."}
-      final url = RegExp(r'"url":"([^"]+)"').firstMatch(responseData)?.group(1) ?? '';
-
-      setState(() {
-        if (docType == 'rc') { _rcFileUrl = url; _rcUploaded = true; _rcUploading = false; }
-        if (docType == 'insurance') { _insFileUrl = url; _insUploaded = true; _insUploading = false; }
-        if (docType == 'puc') { _pucFileUrl = url; _pucUploaded = true; _pucUploading = false; }
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$docType uploaded successfully!'), backgroundColor: AppTheme.success),
-        );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final fileUrl = data['fileUrl'] ?? data['url'];
+        setState(() {
+          if (docType == 'rc') {
+            _rcFileUrl = fileUrl;
+            _rcUploaded = true;
+            _rcUploading = false;
+          } else if (docType == 'insurance') {
+            _insFileUrl = fileUrl;
+            _insUploaded = true;
+            _insUploading = false;
+          } else if (docType == 'puc') {
+            _pucFileUrl = fileUrl;
+            _pucUploaded = true;
+            _pucUploading = false;
+          }
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${docType.toUpperCase()} document uploaded successfully!'), backgroundColor: AppTheme.success),
+          );
+        }
+      } else {
+        throw Exception('Upload failed: ${response.statusCode}');
       }
     } catch (e) {
       setState(() {
@@ -626,7 +651,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppTheme.danger),
+          SnackBar(content: Text('Failed to upload $docType document: $e'), backgroundColor: AppTheme.danger),
         );
       }
     }
@@ -637,74 +662,68 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
       setState(() => _isSaving = true);
       try {
         if (widget.vehicle == null) {
+          final yearVal = _rcRegDate != null ? _rcRegDate!.year : DateTime.now().year;
           await widget.engine.addVehicle(Vehicle(
-            plate: _plateCtrl.text.toUpperCase(), 
-            deviceId: _deviceIdCtrl.text.trim(),
-            year: _rcRegDate?.year ?? 2024, 
-            type: _selectedType, 
-            make: _makeCtrl.text.trim().isEmpty ? null : _makeCtrl.text.trim(),
-            model: _modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim(),
-            fuelType: _selectedFuelType,
-            fuelCapacity: double.tryParse(_fuelCapCtrl.text.trim()),
-            status: 'offline', 
+            plate: _plateCtrl.text.toUpperCase(),
+            deviceId: _deviceIdCtrl.text,
+            year: yearVal,
+            type: _selectedType,
+            status: 'stopped',
             driver: 'Unassigned',
-            loc: '', 
-            speed: 0, 
-            fuel: 100, 
-            mil: double.tryParse(_milCtrl.text.trim()) ?? 0.0, 
-            idle: 0, 
-            fastag: 0, 
-            health: 100, 
+            loc: 'Depot',
+            speed: 0,
+            fuel: 100,
+            mil: double.tryParse(_milCtrl.text) ?? 4.0,
+            idle: 0,
+            fastag: 1000,
+            health: 100,
             odo: 0,
-            nextService: _nextServiceDate != null ? _nextServiceDate!.toIso8601String().split('T').first : '2025-01-01', 
-            insurance: _insExpDate != null ? _insExpDate!.toIso8601String().split('T').first : '2025-01-01', 
-            permit: _permitDate != null ? _permitDate!.toIso8601String().split('T').first : '2025-01-01', 
-            puc: _pucExpDate != null ? _pucExpDate!.toIso8601String().split('T').first : '2025-01-01',
-            lastFill: 'N/A', 
-            alerts: [], 
-            lat: 19.0760, 
-            lng: 72.8777,
-            imageUrl: _rcFileUrl ?? _insFileUrl ?? _pucFileUrl,
+            nextService: _nextServiceDate != null ? "${_nextServiceDate!.year}-${_nextServiceDate!.month.toString().padLeft(2, '0')}-${_nextServiceDate!.day.toString().padLeft(2, '0')}" : '2025-06-01',
+            insurance: _insExpDate != null ? "${_insExpDate!.year}-${_insExpDate!.month.toString().padLeft(2, '0')}-${_insExpDate!.day.toString().padLeft(2, '0')}" : '2025-12-31',
+            permit: _permitDate != null ? "${_permitDate!.year}-${_permitDate!.month.toString().padLeft(2, '0')}-${_permitDate!.day.toString().padLeft(2, '0')}" : '2026-01-01',
+            puc: _pucExpDate != null ? "${_pucExpDate!.year}-${_pucExpDate!.month.toString().padLeft(2, '0')}-${_pucExpDate!.day.toString().padLeft(2, '0')}" : '2025-08-15',
+            lastFill: 'N/A',
+            make: _makeCtrl.text.trim().isNotEmpty ? _makeCtrl.text.trim() : null,
+            model: _modelCtrl.text.trim().isNotEmpty ? _modelCtrl.text.trim() : null,
+            fuelCapacity: double.tryParse(_fuelCapCtrl.text.trim()),
+            fuelType: _selectedFuelType,
             rcUrl: _rcFileUrl,
             insuranceUrl: _insFileUrl,
             pucUrl: _pucFileUrl,
+            alerts: [],
+            lat: 0.0,
+            lng: 0.0,
           ));
         } else {
           await widget.engine.updateVehicle(widget.vehicle!.copyWith(
-            deviceId: _deviceIdCtrl.text.trim(),
+            deviceId: _deviceIdCtrl.text,
             type: _selectedType,
-            make: _makeCtrl.text.trim().isEmpty ? null : _makeCtrl.text.trim(),
-            model: _modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim(),
+            mil: double.tryParse(_milCtrl.text) ?? widget.vehicle!.mil,
+            make: _makeCtrl.text.trim().isNotEmpty ? _makeCtrl.text.trim() : widget.vehicle!.make,
+            model: _modelCtrl.text.trim().isNotEmpty ? _modelCtrl.text.trim() : widget.vehicle!.model,
+            fuelCapacity: double.tryParse(_fuelCapCtrl.text.trim()) ?? widget.vehicle!.fuelCapacity,
             fuelType: _selectedFuelType,
-            fuelCapacity: double.tryParse(_fuelCapCtrl.text.trim()),
-            mil: double.tryParse(_milCtrl.text.trim()) ?? widget.vehicle!.mil,
-            insurance: _insExpDate != null ? _insExpDate!.toIso8601String().split('T').first : widget.vehicle!.insurance,
-            puc: _pucExpDate != null ? _pucExpDate!.toIso8601String().split('T').first : widget.vehicle!.puc,
-            nextService: _nextServiceDate != null ? _nextServiceDate!.toIso8601String().split('T').first : widget.vehicle!.nextService,
-            permit: _permitDate != null ? _permitDate!.toIso8601String().split('T').first : widget.vehicle!.permit,
-            imageUrl: _rcFileUrl ?? _insFileUrl ?? _pucFileUrl ?? widget.vehicle!.imageUrl,
+            insurance: _insExpDate != null ? "${_insExpDate!.year}-${_insExpDate!.month.toString().padLeft(2, '0')}-${_insExpDate!.day.toString().padLeft(2, '0')}" : widget.vehicle!.insurance,
+            puc: _pucExpDate != null ? "${_pucExpDate!.year}-${_pucExpDate!.month.toString().padLeft(2, '0')}-${_pucExpDate!.day.toString().padLeft(2, '0')}" : widget.vehicle!.puc,
+            permit: _permitDate != null ? "${_permitDate!.year}-${_permitDate!.month.toString().padLeft(2, '0')}-${_permitDate!.day.toString().padLeft(2, '0')}" : widget.vehicle!.permit,
+            nextService: _nextServiceDate != null ? "${_nextServiceDate!.year}-${_nextServiceDate!.month.toString().padLeft(2, '0')}-${_nextServiceDate!.day.toString().padLeft(2, '0')}" : widget.vehicle!.nextService,
             rcUrl: _rcFileUrl ?? widget.vehicle!.rcUrl,
             insuranceUrl: _insFileUrl ?? widget.vehicle!.insuranceUrl,
             pucUrl: _pucFileUrl ?? widget.vehicle!.pucUrl,
-          )); 
+          ));
         }
-        await widget.engine.refreshData();
-        
+
         if (mounted) {
-          await DialogUtils.showSuccessAnimation(context, 'Vehicle Saved Successfully!');
-          if (mounted) {
-            Navigator.pop(context); // close form
-          }
+          setState(() => _isSaving = false);
+          await DialogUtils.showSuccessAnimation(context, widget.vehicle == null ? 'Vehicle Registered!' : 'Vehicle Updated!');
+          if (mounted) Navigator.pop(context);
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: AppTheme.danger),
-          );
-        }
-      } finally {
-        if (mounted) {
           setState(() => _isSaving = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to save vehicle: $e'), backgroundColor: AppTheme.danger),
+          );
         }
       }
     }
@@ -712,146 +731,172 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.vehicle == null ? 'Add New Vehicle' : 'Edit Vehicle'),
-      content: SizedBox(
-        width: 500,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Material(
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        padding: EdgeInsets.only(bottom: bottomInset + 16, top: 12, left: 20, right: 20),
+        child: Column(
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                TextFormField(
-                  controller: _plateCtrl,
-                  decoration: const InputDecoration(labelText: 'Registration Plate (e.g. MH 01 AB 1234)'),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return 'Required';
-                    if (!RegExp(r'^[A-Za-z]{2} \d{2} [A-Za-z]{1,2} \d{4}$').hasMatch(value)) {
-                      return 'Invalid format. Use XX NN XX NNNN (e.g. DL 11 AA 1234)';
-                    }
-                    return null;
-                  },
+                Text(
+                  widget.vehicle == null ? 'Register New Vehicle' : 'Edit Vehicle Details',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _makeCtrl,
-                  decoration: const InputDecoration(labelText: 'Make (e.g. Tata)'),
+                IconButton(
+                  icon: const Icon(LucideIcons.x, size: 20),
+                  onPressed: () => Navigator.pop(context),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _modelCtrl,
-                  decoration: const InputDecoration(labelText: 'Model (e.g. 2024, 2020 or 2015)'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(labelText: 'Vehicle Type'),
-                  value: _selectedType,
-                  items: ['6 wheeler', '8 wheeler', '10+ wheelers'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (val) => setState(() => _selectedType = val!),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(labelText: 'Fuel Type'),
-                  value: _selectedFuelType,
-                  items: ['Diesel', 'Petrol', 'CNG', 'EV'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (val) => setState(() => _selectedFuelType = val!),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _fuelCapCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Fuel Capacity (Liters)'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _milCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Mileage (Average km/L)'),
-                ),
-                const SizedBox(height: 24),
-                const Text('Hardware Device ID (Microcontroller UID)', style: TextStyle(fontWeight: FontWeight.w500)),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(LucideIcons.scanLine, size: 18),
-                    label: const Text('Scan QR'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
-                      foregroundColor: AppTheme.primaryBlue,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () async {
-                      final scannedId = await showDialog<String>(
-                        context: context,
-                        builder: (ctx) => const QrScannerDialog(),
-                      );
-                      if (scannedId != null && scannedId.isNotEmpty) {
-                        setState(() {
-                          _deviceIdCtrl.text = scannedId;
-                        });
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Center(
-                  child: Text('OR', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _deviceIdCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Manual Entry',
-                    isDense: true,
-                  ),
-                  validator: (value) => value == null || value.isEmpty ? 'Required for telemetry' : null,
-                ),
-                const SizedBox(height: 24),
-                const Text('Compliance Documents', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const Divider(),
-                
-                _buildDateRow('RC Registration Date', _rcRegDate, (date) => setState(() => _rcRegDate = date)),
-
-                _buildUploadRow('RC Document', _rcUploaded, _rcUploading, () => _pickAndUpload('rc')),
-                
-                const Divider(height: 16),
-                
-                _buildDateRow('Insurance Expiry Date', _insExpDate, (date) => setState(() => _insExpDate = date)),
-                _buildUploadRow('Insurance Certificate', _insUploaded, _insUploading, () => _pickAndUpload('insurance')),
-                
-                const Divider(height: 16),
-                
-                _buildDateRow('PUC Expiry Date', _pucExpDate, (date) => setState(() => _pucExpDate = date)),
-                _buildUploadRow('PUC Certificate', _pucUploaded, _pucUploading, () => _pickAndUpload('puc')),
-
-                const Divider(height: 16),
-
-                _buildDateRow('Next Service Date', _nextServiceDate, (date) => setState(() => _nextServiceDate = date)),
-
-                const Divider(height: 16),
-
-                _buildDateRow('National Permit Expiry Date', _permitDate, (date) => setState(() => _permitDate = date)),
               ],
             ),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: widget.scrollController,
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: _plateCtrl,
+                        decoration: const InputDecoration(labelText: 'Registration Plate Number (e.g. KA01AB1234)'),
+                        validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _makeCtrl,
+                        decoration: const InputDecoration(labelText: 'Brand name ex: Tata, Bharatbenz..'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _modelCtrl,
+                        decoration: const InputDecoration(labelText: 'Model (e.g. Prima 2830)'),
+                      ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(labelText: 'Vehicle Type / Body'),
+                      value: _selectedType,
+                      items: ['6 wheeler', '8 wheeler', '10+ wheelers'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (val) => setState(() => _selectedType = val!),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(labelText: 'Fuel Type'),
+                      value: _selectedFuelType,
+                      items: ['Diesel', 'Petrol', 'CNG', 'EV'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (val) => setState(() => _selectedFuelType = val!),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _fuelCapCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Fuel Capacity (Liters)'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _milCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Mileage (Average km/L)'),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Hardware Device ID (Microcontroller UID)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(LucideIcons.scanLine, size: 18),
+                        label: const Text('Scan QR Code'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
+                          foregroundColor: AppTheme.primaryBlue,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        onPressed: () async {
+                          final scannedId = await showDialog<String>(
+                            context: context,
+                            builder: (ctx) => const QrScannerDialog(),
+                          );
+                          if (scannedId != null && scannedId.isNotEmpty) {
+                            setState(() {
+                              _deviceIdCtrl.text = scannedId;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _deviceIdCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Manual Entry Device ID',
+                        isDense: true,
+                      ),
+                      validator: (value) => value == null || value.isEmpty ? 'Required for telemetry' : null,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Compliance Documents', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const Divider(),
+                    _buildDateRow('RC Registration Date', _rcRegDate, (date) => setState(() => _rcRegDate = date)),
+                    _buildUploadRow('RC Document', _rcUploaded, _rcUploading, () => _pickAndUpload('rc')),
+                    const Divider(height: 16),
+                    _buildDateRow('Insurance Expiry Date', _insExpDate, (date) => setState(() => _insExpDate = date)),
+                    _buildUploadRow('Insurance Certificate', _insUploaded, _insUploading, () => _pickAndUpload('insurance')),
+                    const Divider(height: 16),
+                    _buildDateRow('PUC Expiry Date', _pucExpDate, (date) => setState(() => _pucExpDate = date)),
+                    _buildUploadRow('PUC Certificate', _pucUploaded, _pucUploading, () => _pickAndUpload('puc')),
+                    const Divider(height: 16),
+                    _buildDateRow('Next Service Date', _nextServiceDate, (date) => setState(() => _nextServiceDate = date)),
+                    const Divider(height: 16),
+                    _buildDateRow('National Permit Expiry Date', _permitDate, (date) => setState(() => _permitDate = date)),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _save,
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
+                  child: _isSaving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Save Vehicle'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary))),
-        ElevatedButton(
-          onPressed: _isSaving ? null : _save,
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, foregroundColor: Colors.white),
-          child: _isSaving
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('Save Vehicle')
-        ),
-      ],
-    );
-  }
+    ),
+  );
+}
 }
 
 class _CompIcon extends StatelessWidget {
@@ -919,7 +964,8 @@ class _VehicleDetailDrawer extends StatelessWidget {
 
     if (vehicle.plate.isEmpty) return const SizedBox.shrink();
     final headerColor = _headerColor(vehicle.status, vehicle.isActive);
-    final healthVal = calculateHealth(vehicle.year);
+    final vHealth = engine.vehicleHealthScores[vehicle.plate];
+    final healthBadgeLabel = vHealth?.healthScore != null ? 'Health: ${vHealth!.healthScore}/100 (${vHealth.status})' : 'Health: Insufficient Data';
 
     return Drawer(
       width: 380,
@@ -964,7 +1010,7 @@ class _VehicleDetailDrawer extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     _whiteBadge(vehicle.status.toUpperCase()),
-                    _whiteBadge('Health: $healthVal%'),
+                    _whiteBadge(healthBadgeLabel),
                   ],
                 ),
               ],
@@ -975,6 +1021,22 @@ class _VehicleDetailDrawer extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
+                if (vHealth != null && vHealth.reasons.isNotEmpty) ...[
+                  _sectionLabel('VEHICLE HEALTH AUDIT REASONS'),
+                  const SizedBox(height: 8),
+                  ...vHealth.reasons.map((r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(vHealth.healthScore != null && vHealth.healthScore! >= 75 ? LucideIcons.checkCircle2 : LucideIcons.alertTriangle, size: 14, color: vHealth.healthScore != null && vHealth.healthScore! >= 75 ? AppTheme.primaryBlue : AppTheme.warning),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(r, style: const TextStyle(fontSize: 12, height: 1.3))),
+                      ],
+                    ),
+                  )),
+                  const Divider(height: 36),
+                ],
                 _sectionLabel('COMPLIANCE & DOCUMENTS'),
                 _complianceRow('RC Registration', '${vehicle.year}', 'Year', false),
                 _complianceRow('Insurance', vehicle.insurance, 'Expires', _isExpiring(vehicle.insurance)),
