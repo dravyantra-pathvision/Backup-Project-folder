@@ -56,8 +56,8 @@ const generateReport = async (req, res) => {
         break;
       }
       case 'vehicle_health': {
-        const r = await pool.query(`SELECT plate,model,year,type,status,driver,health,odo,next_service,insurance,permit,puc FROM vehicles WHERE uid=$1`, [uid]);
-        fields = ['plate','model','year','type','status','driver','health','odo','next_service','insurance','permit','puc'];
+        const r = await pool.query(`SELECT plate,make,model,year,type,status,driver,health,odo,next_service,device_id,fuel_type,fuel_capacity FROM vehicles WHERE uid=$1`, [uid]);
+        fields = ['plate','make','model','year','type','status','driver','health','odo','next_service','device_id','fuel_type','fuel_capacity'];
         data = r.rows;
         filename = 'vehicle_health';
         break;

@@ -357,5 +357,30 @@
     "speedingFuelWasted": 0,
     "theftFuelLoss": 0,
     "theftMoneyLoss": 0
+  },
+  {
+    "id": "TRP-432197",
+    "uid": "xJ46gQQlNrXo5HRQXUEOUEUKjdV2",
+    "vehicle": "KA 33 W 1267",
+    "driver": "Mukhesh Kumar",
+    "status": "not started",
+    "idleDuration": 0,
+    "liveIdleTime": "00:00:00",
+    "liveFuelCount": 0,
+    "load": null,
+    "client": "Anand Universtity",
+    "date": "2026-09-29",
+    "progress": 0,
+    "distance": 710.8,
+    "fuelUsed": 0,
+    "tripCompleted": false,
+    "_prevLiveFuelCount": 0,
+    "currentMileage": 0,
+    "fuelSaved": 203.09,
+    "fuelWasted": 0,
+    "speedingFuelWasted": 0,
+    "theftFuelLoss": 0,
+    "idleMoneyWasted": 0,
+    "theftMoneyLoss": 0
   }
 ]

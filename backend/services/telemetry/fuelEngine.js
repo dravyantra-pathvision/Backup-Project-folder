@@ -53,14 +53,14 @@ async function process(vehicle, trip, packet, settings) {
       return result;
     }
 
-    // Theft: engine OFF + stationary + significant drop
-    const isEngineOff  = (power === false);
-    const isStationary = (speed === 0 || speed === null || speed === undefined);
-    if (isEngineOff && isStationary && fuelDelta >= settings.fuelTheftThresholdLiters) {
+    // Fuel Theft: sudden significant drop >= fuelTheftThresholdLiters (default 3.0L)
+    // Compares incoming fuel reading with previous recorded fuel reading (sent every 5s or upon restart/wakeup).
+    // Normal 5s driving consumption is under 0.1L; a drop >= 3.0L indicates fuel theft/siphoning.
+    if (fuelDelta >= settings.fuelTheftThresholdLiters) {
       result.theftDetected = true;
       result.theftAmount   = fuelDelta;
       await _storeTheftEvent({ vehicle, trip, packet, fuelDelta, previousFuel, currentFuel });
-      return result; // Don't count theft as consumption
+      return result; // Don't count theft as normal consumption
     }
 
     // Normal consumption

@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DravYantra - Complete Project & Technical Guide</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 14mm 14mm 14mm;
+      @bottom-right {
+        content: "Page " counter(page);
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 9pt;
+        color: #718096;
+      }
+    }
+    
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      color: #2D3748;
+      background-color: #FFFFFF;
+      line-height: 1.5;
+      font-size: 9.8pt;
+      margin: 0;
+      padding: 0;
+    }
+    
+    /* Cover / Header Banner */
+    .header-banner {
+      background: linear-gradient(135deg, #0F2B48 0%, #1A4B75 100%);
+      color: #FFFFFF;
+      padding: 20px 24px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    
+    .header-banner h1 {
+      font-size: 20pt;
+      margin: 0 0 5px 0;
+      color: #FFFFFF;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    
+    .header-banner p {
+      margin: 0;
+      font-size: 10.5pt;
+      color: #CBD5E0;
+    }
+    
+    .meta-bar {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      font-size: 8.5pt;
+      color: #E2E8F0;
+    }
+    
+    /* Section Headings */
+    h2 {
+      color: #0F2B48;
+      font-size: 12.5pt;
+      font-weight: 700;
+      border-bottom: 2px solid #3182CE;
+      padding-bottom: 4px;
+      margin-top: 16px;
+      margin-bottom: 8px;
+      page-break-after: avoid;
+    }
+    
+    h3 {
+      color: #2B6CB0;
+      font-size: 10.5pt;
+      font-weight: 700;
+      margin-top: 12px;
+      margin-bottom: 6px;
+      page-break-after: avoid;
+    }
+    
+    p {
+      margin: 0 0 8px 0;
+    }
+    
+    ul, ol {
+      margin: 0 0 8px 0;
+      padding-left: 20px;
+    }
+    
+    li {
+      margin-bottom: 3px;
+    }
+    
+    /* Professional Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 12px 0;
+      font-size: 8.8pt;
+      page-break-inside: avoid;
+    }
+    
+    th, td {
+      border: 1px solid #CBD5E0;
+      padding: 5.5px 8.5px;
+      text-align: left;
+      vertical-align: top;
+    }
+    
+    th {
+      background-color: #EDF2F7;
+      color: #1A202C;
+      font-weight: 700;
+    }
+    
+    tr:nth-child(even) {
+      background-color: #F7FAFC;
+    }
+    
+    /* Highlight & Feature Cards */
+    .feature-card {
+      background-color: #F7FAFC;
+      border-left: 4px solid #3182CE;
+      border-radius: 0 6px 6px 0;
+      padding: 9px 12px;
+      margin-bottom: 10px;
+      page-break-inside: avoid;
+      border-top: 1px solid #E2E8F0;
+      border-right: 1px solid #E2E8F0;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    
+    .feature-card.alert-card {
+      border-left-color: #E53E3E;
+      background-color: #FFF5F5;
+    }
+    
+    .feature-card.success-card {
+      border-left-color: #38A169;
+      background-color: #F0FFF4;
+    }
+    
+    .feature-title {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #1A365D;
+      margin-bottom: 3px;
+    }
+    
+    .feature-desc {
+      font-size: 8.8pt;
+      color: #4A5568;
+      margin-bottom: 5px;
+    }
+    
+    .calc-box {
+      background-color: #FFFFFF;
+      border: 1px dashed #CBD5E0;
+      border-radius: 4px;
+      padding: 7px 9px;
+      margin-top: 5px;
+      font-size: 8.3pt;
+    }
+    
+    .calc-formula {
+      font-weight: 700;
+      color: #2C5282;
+      margin-bottom: 3px;
+    }
+    
+    .calc-example {
+      color: #2D3748;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 1.5px 5px;
+      font-size: 7.8pt;
+      font-weight: 600;
+      border-radius: 3px;
+      background-color: #E2E8F0;
+      color: #2D3748;
+    }
+    
+    .badge-blue { background-color: #EBF8FF; color: #2B6CB0; }
+    .badge-green { background-color: #F0FFF4; color: #276749; }
+    .badge-red { background-color: #FFF5F5; color: #9B2C2C; }
+  </style>
+</head>
+<body>
+
+  <!-- COVER / TITLE BANNER -->
+  <div class="header-banner">
+    <h1>DRAVYANTRA PLATFORM GUIDE</h1>
+    <p>Complete Reference Manual: Technology Stack, Business Logic & Calculations, and Dashboard Operations</p>
+    <div class="meta-bar">
+      <span><strong>Document Type:</strong> System & Operations Manual</span>
+      <span><strong>Target Audience:</strong> Management, Developers, Fleet Operators</span>
+      <span><strong>Format:</strong> Executive Summary</span>
+    </div>
+  </div>
+
+  <!-- SECTION 1: TECHNOLOGY STACK -->
+  <h2>1. Technology Stack & Why We Use It</h2>
+  <p>DravYantra is an IoT-powered fleet tracking and fuel intelligence platform. Each technology was selected to guarantee real-time speed, accuracy for financial calculations, and user-friendly mobile and web interfaces.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25%;">Application Component</th>
+        <th style="width: 25%;">Technology Used</th>
+        <th style="width: 50%;">Why We Selected This Tech Stack (Simple Reasons)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Fleet Owner Mobile App</strong><br><span class="badge badge-blue">iOS & Android</span></td>
+        <td><strong>Flutter (Dart)</strong><br>Firebase Auth & Push Notifications</td>
+        <td>
+          • <strong>Single Codebase:</strong> Works smoothly on both Android phones and iPhones without building two separate apps.<br>
+          • <strong>Fast & Responsive:</strong> Smooth 60 FPS performance for live vehicle maps and fuel dials.<br>
+          • <strong>Instant Alerts:</strong> Firebase delivers instant push notifications directly to the owner's phone when fuel theft or overspeeding happens.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Fleet Manager Web Dashboard</strong><br><span class="badge badge-green">Web Portal</span></td>
+        <td><strong>Next.js (React)</strong><br>TypeScript & Tailwind CSS</td>
+        <td>
+          • <strong>Fast Loading:</strong> Next.js loads web pages instantly so fleet managers can track dozens of trucks simultaneously.<br>
+          • <strong>Error Prevention:</strong> TypeScript ensures all trip data and financial calculations are strictly verified before display.<br>
+          • <strong>Clean Layouts:</strong> Tailwind CSS creates modern, responsive dashboards that look sharp on laptops, desktops, and tablets.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Super-Admin Platform Console</strong><br><span class="badge badge-blue">Admin Portal</span></td>
+        <td><strong>Flutter Web & Desktop</strong><br>Material Design 3</td>
+        <td>
+          • <strong>High-Density Management:</strong> Built for master administrators to manage hundreds of client organizations, verify business accounts, and manage GPS devices.<br>
+          • <strong>Unified Desktop Experience:</strong> Provides a desktop-style interface with data tables and audit logs.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Backend API & Telemetry Engine</strong><br><span class="badge badge-red">Core Engine</span></td>
+        <td><strong>Node.js & Express.js</strong></td>
+        <td>
+          • <strong>Handles High Traffic:</strong> IoT GPS devices send location and fuel readings every 5 seconds. Node.js processes thousands of live pings simultaneously without slowing down.<br>
+          • <strong>Modular Design:</strong> Separates GPS math, fuel checks, and safety alerts into clean, reliable background engines.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Database & Storage</strong><br><span class="badge badge-green">ACID Relational</span></td>
+        <td><strong>PostgreSQL 15+</strong><br>Database Triggers & Pooling</td>
+        <td>
+          • <strong>Financial Accuracy:</strong> Every rupee saved or lost is calculated accurately using ACID transactions.<br>
+          • <strong>Built-in Safety Triggers:</strong> If any calculation is missed, the database automatically recalculates fuel usage and costs on the spot.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 2: BACKEND LOGIC & CALCULATIONS -->
+  <h2>2. Backend Calculations & Business Logic (In Simple Human Terms)</h2>
+  <p>Commercial trucks waste massive amounts of money on fuel due to rash driving, excessive idling, and fuel theft. DravYantra takes raw GPS and fuel sensor readings and converts them into clear financial and environmental insights.</p>
+
+  <!-- Feature 1: Speed to Mileage -->
+  <div class="feature-card">
+    <div class="feature-title">Feature 1: Speed-to-Mileage Calculation (How Driving Speed Affects Mileage)</div>
+    <div class="feature-desc">
+      <strong>The Problem:</strong> Heavy trucks burn much more fuel when driven too fast because of wind resistance. A truck cruising at 50 km/h gets great mileage, while the same truck at 100 km/h wastes fuel.<br>
+      <strong>How the Backend Solves It:</strong> The backend checks the truck's current speed and dynamically assigns the correct mileage efficiency based on standard commercial vehicle standards:
+    </div>
+    <div style="display: flex; gap: 6px; margin-bottom: 5px;">
+      <span class="badge badge-green">40 to 59 km/h: 5.0 km/L (Best Eco Mileage)</span>
+      <span class="badge badge-blue">60 to 69 km/h: 4.0 km/L (Normal Baseline)</span>
+      <span class="badge badge-red">80 km/h: 3.4 km/L</span>
+      <span class="badge badge-red">100 km/h: 3.0 km/L</span>
+      <span class="badge badge-red">120+ km/h: 2.6 km/L</span>
+    </div>
+    <div class="calc-box">
+      <div class="calc-formula">Formula: Fuel Used (Liters) = Trip Distance (km) ÷ Current Mileage (km/L)</div>
+      <div class="calc-example">
+        <strong>Real Example:</strong> A truck travels a <strong>400 km</strong> trip:<br>
+        • If driven smoothly at <strong>50 km/h</strong> (5.0 km/L) → Fuel Used = 400 ÷ 5.0 = <strong>80 Liters</strong>.<br>
+        • If driven fast at <strong>100 km/h</strong> (3.0 km/L) → Fuel Used = 400 ÷ 3.0 = <strong>133.3 Liters</strong> (Wastes 53.3 Liters!).
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 2: Fuel Saved & Money Saved -->
+  <div class="feature-card success-card">
+    <div class="feature-title">Feature 2: Fuel Saved & Money Saved (Eco-Driving Profit)</div>
+    <div class="feature-desc">
+      <strong>The Problem:</strong> Fleet owners want to know the exact rupee amount saved when drivers drive in the safe eco-speed zone (40–59 km/h).<br>
+      <strong>How the Backend Solves It:</strong> The backend compares actual fuel used against standard baseline fuel (at 4.0 km/L) and multiplies the saved liters by the local fuel price (e.g., ₹100 per liter from Fleet Settings).
+    </div>
+    <div class="calc-box">
+      <div class="calc-formula">
+        1. Expected Baseline Fuel = Distance ÷ 4.0 km/L<br>
+        2. Fuel Saved (Liters) = Expected Fuel − Actual Fuel Used<br>
+        3. Money Saved (₹) = Fuel Saved × Fuel Price per Liter (₹100)
+      </div>
+      <div class="calc-example">
+        <strong>Real Example:</strong> A truck covers <strong>400 km</strong> at 50 km/h (actual fuel used = 80 Liters):<br>
+        • Baseline Expected Fuel = 400 ÷ 4.0 = 100 Liters.<br>
+        • Fuel Saved = 100 Liters − 80 Liters = <strong>20 Liters Saved</strong>.<br>
+        • Money Saved = 20 Liters × ₹100 = <strong>₹2,000 Direct Cash Saved on this trip</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 3: Excess Speeding Fuel Wasted -->
+  <div class="feature-card alert-card">
+    <div class="feature-title">Feature 3: Speeding Fuel Wasted & Financial Loss</div>
+    <div class="feature-desc">
+      <strong>The Problem:</strong> Drivers often overspeed on highways to finish trips quickly, burning excess fuel and increasing accident risk.<br>
+      <strong>How the Backend Solves It:</strong> The backend calculates how much extra fuel was burned compared to normal driving and translates it into direct financial loss.
+    </div>
+    <div class="calc-box">
+      <div class="calc-formula">
+        1. Speeding Fuel Wasted = Actual Fuel Used − Expected Baseline Fuel<br>
+        2. Money Lost (₹) = Speeding Fuel Wasted × Fuel Price (₹100)
+      </div>
+      <div class="calc-example">
+        <strong>Real Example:</strong> A truck covers <strong>400 km</strong> at 120 km/h (2.6 km/L efficiency):<br>
+        • Actual Fuel Used = 400 ÷ 2.6 = 153.85 Liters (vs 100 Liters baseline).<br>
+        • Fuel Wasted = 153.85 − 100 = <strong>53.85 Liters Wasted</strong>.<br>
+        • Money Lost = 53.85 Liters × ₹100 = <strong>₹5,385.00 Lost due to speeding</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 4: Idling Loss -->
+  <div class="feature-card">
+    <div class="feature-title">Feature 4: Engine Idling Time & Money Wasted (Realistic Commercial Stats)</div>
+    <div class="feature-desc">
+      <strong>The Problem:</strong> Drivers often leave the engine running while parked at tolls, loading docks, or tea stalls, burning fuel needlessly.<br>
+      <strong>How the Backend Solves It:</strong> When the vehicle has Engine ON but Speed is 0 km/h, the backend tracks idle seconds. In real-world stats, a heavy commercial truck in idle state wastes roughly <strong>0.03 to 0.07 Liters of fuel per minute</strong> (averaging ~0.05 Liters per minute / 0.00083 Liters per second). When converting to money at a fuel price of <strong>₹100 per Liter</strong> (fetched from Fleet Settings), this equals <strong>₹0.08 wasted per second</strong> (around ₹4.80 to ₹5.00 per minute).
+    </div>
+    <div class="calc-box">
+      <div class="calc-formula">
+        1. Idling Fuel Wasted (Liters) = Idling Time in Seconds × 0.00083 Liters/second (~0.05 L/minute)<br>
+        2. Idling Money Wasted (₹) = Idling Time in Seconds × ₹0.08 per second (at ₹100/L fuel price)<br>
+        3. Automatic Alerts: Warning alert sent at 5 minutes (300s), Critical alert sent at 15 minutes (900s).
+      </div>
+      <div class="calc-example">
+        <strong>Real Example:</strong> A driver leaves the engine running for <strong>20 minutes (1,200 seconds)</strong> while loading:<br>
+        • Idling Fuel Wasted = 1,200 seconds × 0.00083 = <strong>1.0 Liter of fuel wasted</strong>.<br>
+        • Idling Money Wasted = 1,200 seconds × ₹0.08 = <strong>₹96.00 Wasted</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 5: Fuel Theft Detection -->
+  <div class="feature-card alert-card">
+    <div class="feature-title">Feature 5: Real-Time Fuel Theft Detection (Continuous 5-Second Cloud Comparison)</div>
+    <div class="feature-desc">
+      <strong>How the Hardware & Cloud Work:</strong> When a vehicle engine is turned OFF, the IoT device does not send data continuously. Instead, for every 5 seconds during active operation, OR whenever the vehicle stops and starts again after some time, the device sends its latest fuel reading to the cloud.<br>
+      <strong>How the Backend Detects Theft:</strong> On every incoming packet, the backend performs a continuous comparison between the <strong>new fuel reading</strong> and the <strong>previous recorded fuel reading</strong>. Normal 5-second driving consumption is tiny (under 0.05 Liters). If there is a sudden drop of <strong>greater than 3 Liters (Drop ≥ 3.0 L)</strong> between readings (whether during transit or after waking up from a stop), the backend immediately flags it as a <strong>Fuel Theft Incident</strong> with the exact location!
+    </div>
+    <div class="calc-box">
+      <div class="calc-formula">
+        Theft Condition: (Previous Fuel Reading − New Fuel Reading) ≥ 3.0 Liters.<br>
+        Theft Money Loss (₹) = Liters Dropped × Fuel Price per Liter (₹100 from Fleet Settings)
+      </div>
+      <div class="calc-example">
+        <strong>Real Example:</strong> A truck was parked with <strong>180 Liters</strong>. When the vehicle starts in the morning or sends a reading, the fuel is <strong>145 Liters</strong>:<br>
+        • Fuel Drop = 180 − 145 = <strong>35 Liters Drop (greater than 3 Liters threshold)</strong>.<br>
+        • Financial Loss = 35 Liters × ₹100 = <strong>₹3,500.00 Stolen</strong>.<br>
+        • Backend Action: Immediately triggers an emergency Critical Fuel Theft Alert with GPS location to the owner's phone.
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 6: Carbon Emissions -->
+  <div class="feature-card">
+    <div class="feature-title">Feature 6: Carbon (CO2) Emissions, CO2 Avoided & Carbon (C) Reduction</div>
+    <div class="feature-desc">
+      <strong>The Problem:</strong> Fleet companies must track and report environmental pollution (ESG reporting) to corporate clients.<br>
+      <strong>How the Backend Solves It:</strong> Burning 1 Liter of diesel produces exactly <strong>2.68 kg of Carbon Dioxide (CO2)</strong>. When fuel is saved, CO2 is avoided. The pure elemental carbon mass is calculated using the molecular ratio of Carbon to CO2 (12 ÷ 44 = 0.2727).
+    </div>
+    <div class="calc-box">
+      <div class="calc-formula">
+        1. Gross CO2 Emitted (kg) = Fuel Used (Liters) × 2.68 kg CO2<br>
+        2. CO2 Avoided (kg) = Fuel Saved (Liters) × 2.68 kg CO2<br>
+        3. Pure Carbon Reduced (kg) = CO2 Avoided × (12 ÷ 44)
+      </div>
+      <div class="calc-example">
+        <strong>Real Example:</strong> A fleet saves <strong>1,500 Liters of diesel</strong> in a month across all its trucks:<br>
+        • CO2 Avoided = 1,500 Liters × 2.68 = <strong>4,020 kg of CO2 Saved (4.02 Metric Tonnes)</strong>.<br>
+        • Pure Carbon Mass Reduced = 4,020 × (12 ÷ 44) = <strong>1,096.36 kg of Pure Carbon Reduced</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature 7: Driver Scorecard -->
+  <div class="feature-card">
+    <div class="feature-title">Feature 7: Driver Safety Scorecard (Fair 0 to 100 Rating)</div>
+    <div class="feature-desc">
+      <strong>The Problem:</strong> Long-distance drivers naturally encounter more road events than short-distance drivers. Scoring must be fair.<br>
+      <strong>How the Backend Solves It:</strong> Every driver starts with <strong>100 points</strong>. Penalties are normalized per <strong>100 km of driving</strong> across four categories:
+    </div>
+    <div style="font-size: 8.3pt; margin-bottom: 5px;">
+      • <strong>Overspeeding Penalty:</strong> (Speed Events ÷ Distance) × 100 × 5.0 (Max -25 pts)<br>
+      • <strong>Excess Idling Penalty:</strong> (Idle Hours ÷ Distance) × 100 × 4.0 (Max -25 pts)<br>
+      • <strong>Fuel Inefficiency Penalty:</strong> If mileage is lower than target (Max -25 pts)<br>
+      • <strong>Harsh Braking / Rash Driving:</strong> (Harsh Braking Events ÷ Distance) × 100 × 5.0 (Max -25 pts)
+    </div>
+    <div class="calc-box">
+      <div class="calc-formula">Final Driver Score = 100 − (Overspeed + Idling + Inefficiency + Rash Driving Penalties)</div>
+      <div class="calc-example">
+        <strong>Score Ratings:</strong> <strong>90–100</strong>: Excellent (Bonus Eligible) | <strong>75–89</strong>: Good | <strong>60–74</strong>: Needs Training | <strong>&lt;60</strong>: High Risk.
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: FLEET MANAGER DASHBOARD -->
+  <h2>3. DravYantra Fleet Manager Dashboard Features</h2>
+  <p>The Fleet Manager Dashboard is the central web control center for fleet managers to monitor daily logistics operations, fuel efficiency, and driver safety.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 28%;">Dashboard Feature / Page</th>
+        <th style="width: 72%;">What Fleet Managers Can Do (Functions & Capabilities)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Executive Overview</strong></td>
+        <td>View high-level summary cards showing active trucks running, idling, or parked; total kilometers driven today; total fuel cost; net money saved; and monthly fuel vs loss trend charts.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Live Fleet Tracking Map</strong></td>
+        <td>Interactive full-screen map showing all vehicles in real-time. Hover over any truck to see live speed, fuel percentage, driver name, engine status, and geofenced warehouse boundaries.</td>
+      </tr>
+      <tr>
+        <td><strong>3. Trips Management</strong></td>
+        <td>Create and dispatch new trips with origin, destination, assigned driver, and vehicle plate. Track active trip progress, view historical route playback on a map, and review trip profitability.</td>
+      </tr>
+      <tr>
+        <td><strong>4. Fuel Intelligence & Audits</strong></td>
+        <td>Monitor real-time fuel levels, view an audit log of all fuel refills (to cross-check fuel pump receipts), and review fuel theft incidents with timestamps and GPS links.</td>
+      </tr>
+      <tr>
+        <td><strong>5. Audited Savings Wallet</strong></td>
+        <td>Review audited fleet savings broken down into three clean categories: (1) Verified Net Savings from eco-driving, (2) Losses Prevented by real-time alerts, and (3) Identified Waste (idling + speeding).</td>
+      </tr>
+      <tr>
+        <td><strong>6. Carbon & ESG Reporting</strong></td>
+        <td>Track corporate sustainability numbers: total CO2 emitted, CO2 avoided, and carbon reduced. Export ready-to-share ESG compliance reports for corporate customers with a single click.</td>
+      </tr>
+      <tr>
+        <td><strong>7. Driver Scorecards & Safety</strong></td>
+        <td>View fleet driver rankings from best to worst. Inspect individual driver profiles, see specific penalty breakdowns (harsh braking, overspeeding, idling), and provide targeted driver coaching.</td>
+      </tr>
+      <tr>
+        <td><strong>8. Vehicle Health & Maintenance</strong></td>
+        <td>Check mechanical health scores (0–100) for all trucks, monitor chassis vibration readings, track mileage degradation, and set reminders for oil changes, tire rotations, and fitness certificates.</td>
+      </tr>
+      <tr>
+        <td><strong>9. Alerts & Incident Watchtower</strong></td>
+        <td>Live feed of all alerts categorized by Critical (Theft, Tampering), Warning (Overspeed, Long Idling), and Info (Refills). Managers can acknowledge, investigate, and mark incidents as resolved.</td>
+      </tr>
+      <tr>
+        <td><strong>10. Reports & Exports Hub</strong></td>
+        <td>Generate and download custom date-range reports in PDF, Excel (.xlsx), and CSV formats for trips, fuel consumption, driver compliance, and executive ROI summaries.</td>
+      </tr>
+      <tr>
+        <td><strong>11. Fleet Settings</strong></td>
+        <td>Customize fleet-wide parameters such as speed limit thresholds (e.g. 70 km/h vs 80 km/h), fuel theft sensitivity, local diesel price per liter (e.g. ₹100/L), and notification routing.</td>
+      </tr>
+      <tr>
+        <td><strong>12. Helpdesk & Support</strong></td>
+        <td>Raise support tickets directly to the DravYantra technical engineering team and track resolution progress and SLA updates in real time.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 4: ADMIN DASHBOARD -->
+  <h2>4. DravYantra Super-Admin Dashboard Features</h2>
+  <p>The Super-Admin Dashboard is the master platform operations console used by DravYantra administrators to manage client organizations, hardware inventory, and system security.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 28%;">Admin Feature / Section</th>
+        <th style="width: 72%;">Admin Responsibilities & How It Works</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Platform Operations Center</strong></td>
+        <td>Monitors overall system health, including real-time telemetry ingestion speed (packets per second), database performance, active client tenants, and total connected vehicles.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Organization Onboarding</strong></td>
+        <td>Reviews new fleet business sign-ups, verifies uploaded company registration documents and tax IDs, approves or rejects applications, and sets vehicle fleet size limits.</td>
+      </tr>
+      <tr>
+        <td><strong>3. IoT Device Inventory</strong></td>
+        <td>Registers and manages GPS trackers and OBD-II hardware by IMEI number. Links devices to client vehicles, monitors SIM card connectivity status (Online, Offline, Weak Signal), and manages firmware updates.</td>
+      </tr>
+      <tr>
+        <td><strong>4. Global Vehicle Registry</strong></td>
+        <td>Search and inspect any vehicle registered across the entire platform. Admin can check hardware assignment history and unlink devices from decommissioned trucks.</td>
+      </tr>
+      <tr>
+        <td><strong>5. Global Trip Surveillance</strong></td>
+        <td>Platform-wide view of all active trips across all organizations. Allows administrators to investigate anomalies and close or reset stalled trips.</td>
+      </tr>
+      <tr>
+        <td><strong>6. Subscriptions & Billing</strong></td>
+        <td>Configure subscription tiers (Starter, Growth, Enterprise), manage monthly and annual billing cycles, generate tax invoices, and track payment receipts.</td>
+      </tr>
+      <tr>
+        <td><strong>7. Global User & Role Management</strong></td>
+        <td>Manage user accounts across all roles (Super Admin, Support Engineer, Fleet Owner, Dispatcher, Driver). Enforce security policies, password resets, and Multi-Factor Authentication.</td>
+      </tr>
+      <tr>
+        <td><strong>8. Security Watchtower</strong></td>
+        <td>Monitors platform-wide security threats, detecting multi-vehicle fuel theft rings across regions and tracking hardware tampering or power disconnection events.</td>
+      </tr>
+      <tr>
+        <td><strong>9. Audit Logs & Compliance</strong></td>
+        <td>Immutable security log recording every administrative action (who approved an account, changed a role, or modified settings) with timestamps and IP addresses for full legal compliance.</td>
+      </tr>
+      <tr>
+        <td><strong>10. Global Support Desk</strong></td>
+        <td>Consolidated queue of all customer support tickets raised by fleet managers. Assigns tickets to support engineers, manages resolution SLAs, and maintains customer communication.</td>
+      </tr>
+      <tr>
+        <td><strong>11. Recycle Bin & Soft Deletion</strong></td>
+        <td>Provides a 30-day safety recovery period for deleted vehicles or organizations. Deleted items can be restored with a single click before permanent automated database purging.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 5: SUMMARY CHEATSHEET -->
+  <h2>5. Quick Reference Summary Table</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25%;">Metric / Calculation</th>
+        <th style="width: 45%;">Simple Plain English Formula</th>
+        <th style="width: 30%;">Key Default Setting</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Distance Traveled</strong></td>
+        <td>Earth Surface Distance between GPS Points (Filters jumps &gt; 5 km)</td>
+        <td>Earth Radius = 6,371 km</td>
+      </tr>
+      <tr>
+        <td><strong>Dynamic Mileage</strong></td>
+        <td>Speed 40–59 km/h: 5.0 km/L | 60–69 km/h: 4.0 km/L | Higher speed reduces mileage</td>
+        <td>Baseline = 4.0 km/L</td>
+      </tr>
+      <tr>
+        <td><strong>Fuel Used</strong></td>
+        <td>Trip Distance (km) ÷ Current Mileage (km/L)</td>
+        <td>Dynamic based on speed</td>
+      </tr>
+      <tr>
+        <td><strong>Money Saved</strong></td>
+        <td>(Expected Fuel − Actual Fuel Used) × Fuel Price</td>
+        <td>Fuel Price = ₹100 / Liter (from Fleet Settings)</td>
+      </tr>
+      <tr>
+        <td><strong>Speeding Loss</strong></td>
+        <td>(Actual Fuel Used − Expected Fuel) × Fuel Price</td>
+        <td>Applies when Speed &gt; 69 km/h</td>
+      </tr>
+      <tr>
+        <td><strong>Idling Loss</strong></td>
+        <td>Idling Time in Seconds × ₹0.08 per second (~0.05 L/minute wasted)</td>
+        <td>₹0.08 / second (at ₹100/L fuel price)</td>
+      </tr>
+      <tr>
+        <td><strong>Fuel Theft Detection</strong></td>
+        <td>Continuous 5s / restart check: Previous Fuel − Current Fuel ≥ 3.0 Liters</td>
+        <td>Threshold = 3.0 Liters drop</td>
+      </tr>
+      <tr>
+        <td><strong>CO2 Emitted</strong></td>
+        <td>Fuel Used (Liters) × 2.68 kg CO2</td>
+        <td>2.68 kg CO2 / Liter</td>
+      </tr>
+      <tr>
+        <td><strong>CO2 Avoided / Saved</strong></td>
+        <td>Fuel Saved (Liters) × 2.68 kg CO2</td>
+        <td>2.68 kg CO2 / Liter</td>
+      </tr>
+      <tr>
+        <td><strong>Carbon (C) Reduced</strong></td>
+        <td>CO2 Avoided × (12 ÷ 44)</td>
+        <td>Ratio = 0.2727</td>
+      </tr>
+      <tr>
+        <td><strong>Driver Score</strong></td>
+        <td>100 − (Overspeeding + Idling + Inefficiency + Rash Driving Penalties per 100 km)</td>
+        <td>0 to 100 Points Scale</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="text-align: center; font-size: 8pt; color: #718096; margin-top: 12px; border-top: 1px solid #E2E8F0; padding-top: 6px;">
+    DravYantra Fleet Telematics & Intelligence Systems • Complete Project & Technical Guide
+  </p>
+
+</body>
+</html>

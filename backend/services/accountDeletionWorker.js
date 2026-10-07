@@ -83,15 +83,13 @@ const processDeletionRequest = async (requestId) => {
     // ── 4. Collect & Physically Delete Uploaded Documents (S3 / Local) ───────
     const documentUrls = new Set();
 
-    // Vehicles (rc_url, insurance_url, puc_url)
+    // Vehicles (rc_url)
     const vehDocs = await client.query(
-      'SELECT rc_url, insurance_url, puc_url FROM vehicles WHERE uid = $1',
+      'SELECT rc_url FROM vehicles WHERE uid = $1',
       [userUid]
     );
     vehDocs.rows.forEach(r => {
       if (r.rc_url) documentUrls.add(r.rc_url);
-      if (r.insurance_url) documentUrls.add(r.insurance_url);
-      if (r.puc_url) documentUrls.add(r.puc_url);
     });
 
     // Drivers (image_url, aadhar_url, license_url)

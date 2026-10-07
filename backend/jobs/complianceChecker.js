@@ -36,7 +36,7 @@ const checkComplianceAlerts = async () => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     // Check vehicles
-    const vRes = await pool.query('SELECT plate, uid, next_service, insurance, permit, puc FROM vehicles');
+    const vRes = await pool.query('SELECT plate, uid, next_service FROM vehicles');
     const dRes = await pool.query('SELECT name, uid, lic_exp FROM drivers');
 
     const checkDocument = async (uid, reference, docName, dateStr) => {
@@ -91,9 +91,6 @@ const checkComplianceAlerts = async () => {
 
     // Vehicles
     for (const v of vRes.rows) {
-      await checkDocument(v.uid, v.plate, 'Insurance', v.insurance);
-      await checkDocument(v.uid, v.plate, 'PUC', v.puc);
-      await checkDocument(v.uid, v.plate, 'Permit', v.permit);
       await checkDocument(v.uid, v.plate, 'Service Due', v.next_service);
     }
 

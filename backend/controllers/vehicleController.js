@@ -14,9 +14,9 @@ const getVehicles = async (req, res) => {
 };
 
 const createVehicle = async (req, res) => {
-  const { plate } = req.body;
-  if (!plate) {
-    return res.status(400).json({ error: 'Vehicle plate is required' });
+  const { plate, make, model, type, year, fuel_type, fuel_capacity, mil, deviceId, odo, next_service } = req.body;
+  if (!plate || !make || !model || !type || !year || !fuel_type || fuel_capacity === undefined || fuel_capacity === null || fuel_capacity === '' || mil === undefined || mil === null || mil === '' || !deviceId || odo === undefined || odo === null || odo === '' || !next_service) {
+    return res.status(400).json({ error: 'All fields are mandatory: Vehicle Plate, Manufacturer, Model, Body Type, Manufacturing Year, Fuel Type, Fuel Tank Capacity, Baseline Mileage, IoT Telemetry Device ID, Current Odometer, and Next Service Date.' });
   }
 
   try {
@@ -30,7 +30,7 @@ const createVehicle = async (req, res) => {
     }, req);
     res.json(row);
   } catch (err) {
-    handleError(res, 'Error saving vehicle', err);
+    handleError(res, err.message || 'Error saving vehicle', err);
   }
 };
 

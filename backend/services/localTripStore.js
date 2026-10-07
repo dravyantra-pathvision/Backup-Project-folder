@@ -46,7 +46,7 @@ const recalculateTripValues = (trip) => {
   const theftThreshold = (() => {
     const settings = readFleetSettings();
     const configured = Number(settings && settings.fuelDropThreshold);
-    return Number.isFinite(configured) && configured > 0 ? configured : 0.7;
+    return Number.isFinite(configured) && configured > 0 ? configured : 3.0;
   })();
   const currentMileage = hasExplicitCurrentMileage
     ? Number((trip.currentMileage ?? trip.current_mileage) || 0)
@@ -62,7 +62,7 @@ const recalculateTripValues = (trip) => {
     ? Number(Math.max((distance / currentMileage) - (distance / defaultMileage), 0).toFixed(2))
     : 0.0;
   const idleDurationVal = typeof trip.idleDuration === 'number' ? trip.idleDuration : Number(trip.idle_duration || 0);
-  const idleMoneyWasted = Number((idleDurationVal * 1.7).toFixed(2));
+  const idleMoneyWasted = Number((idleDurationVal * 0.08).toFixed(2));
   const idleFuelWasted = Number((idleMoneyWasted / 100.0).toFixed(2));
   const fuelWasted = Number((fuelWastedMileage + idleFuelWasted + theftFuelLoss).toFixed(2));
   return {

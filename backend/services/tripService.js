@@ -45,7 +45,7 @@ const calculateSpeedingFuelWasted = (distance, currentMileage) => {
 const getFleetFuelTheftThreshold = () => {
   const settings = readFleetSettings();
   const configured = Number(settings && settings.fuelDropThreshold);
-  return Number.isFinite(configured) && configured > 0 ? configured : 0.7;
+  return Number.isFinite(configured) && configured > 0 ? configured : 3.0;
 };
 
 const getEffectiveIdleSeconds = (status, data, current) => {

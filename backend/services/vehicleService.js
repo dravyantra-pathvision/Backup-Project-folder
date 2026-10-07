@@ -13,10 +13,10 @@ const getAllVehicles = async (uid) => {
 const getAvailableVehicles = async (uid) => {
   const result = await pool.query(
     `SELECT * FROM vehicles v WHERE v.uid = $1
-       AND (v.driver IS NULL OR v.driver = '' OR v.driver = 'None' OR v.driver = 'Unassigned')
        AND NOT EXISTS (
-         SELECT 1 FROM trips t WHERE t.uid = $1 AND t.vehicle = v.plate AND (t.trip_completed IS NOT TRUE)
-       )`,
+         SELECT 1 FROM trips t WHERE t.uid = $1 AND t.vehicle = v.plate AND (t.trip_completed IS NOT TRUE AND LOWER(COALESCE(t.status, '')) IN ('active', 'in progress', 'running'))
+       )
+     ORDER BY v.plate ASC`,
     [uid]
   );
   return result.rows;
@@ -27,31 +27,30 @@ const createVehicle = async (uid, data) => {
   try {
     await client.query('BEGIN');
     
-    // IoT Device Assignment Logic
-    let validDeviceId = null;
-    if (data.deviceId && data.deviceId.trim() !== '') {
-      const deviceId = data.deviceId.trim();
-      
-      const deviceRes = await client.query('SELECT * FROM devices WHERE device_id = $1', [deviceId]);
-      if (deviceRes.rows.length === 0) {
-        throw new Error('Device not found. Please check the Device ID.');
-      }
-      
-      const device = deviceRes.rows[0];
-      
-      if (device.status !== 'Available') {
-        throw new Error(`Device is currently ${device.status} and cannot be assigned.`);
-      }
-      if (device.assigned_vehicle) {
-        throw new Error(`Device is already assigned to vehicle ${device.assigned_vehicle}.`);
-      }
-      
-      validDeviceId = deviceId;
+    // IoT Device Assignment Logic (Mandatory)
+    const rawDeviceId = data.deviceId ? String(data.deviceId).trim() : '';
+    if (!rawDeviceId) {
+      throw new Error('IoT Device ID is mandatory. Please assign a DravYantra device to this vehicle.');
     }
+    
+    const deviceRes = await client.query('SELECT * FROM devices WHERE device_id = $1', [rawDeviceId]);
+    if (deviceRes.rows.length === 0) {
+      throw new Error(`Device '${rawDeviceId}' not found in system. Please enter a valid DravYantra Device ID.`);
+    }
+    
+    const device = deviceRes.rows[0];
+    if (device.status !== 'Available') {
+      throw new Error(`Device '${rawDeviceId}' is currently ${device.status} and cannot be assigned.`);
+    }
+    if (device.assigned_vehicle) {
+      throw new Error(`Device '${rawDeviceId}' is already assigned to vehicle ${device.assigned_vehicle}.`);
+    }
+    
+    const validDeviceId = rawDeviceId;
 
     const result = await client.query(
-      `INSERT INTO vehicles (plate, uid, device_id, year, type, status, driver, loc, speed, fuel, mil, idle, fastag, health, odo, next_service, insurance, permit, puc, last_fill, lat, lng, route, alerts, service_history, rc_url, insurance_url, puc_url, make, model, fuel_type, fuel_capacity) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32) 
+      `INSERT INTO vehicles (plate, uid, device_id, year, type, status, driver, loc, speed, fuel, mil, idle, fastag, health, odo, next_service, last_fill, lat, lng, route, alerts, service_history, rc_url, make, model, fuel_type, fuel_capacity) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) 
        RETURNING *`,
       [
         data.plate,
@@ -59,29 +58,24 @@ const createVehicle = async (uid, data) => {
         validDeviceId,
         data.year,
         data.type,
-        data.status,
-        data.driver,
-        data.loc,
-        data.speed,
-        data.fuel,
+        data.status || 'Active',
+        data.driver || null,
+        data.loc || null,
+        data.speed || 0,
+        data.fuel || 100,
         data.mil,
-        data.idle,
-        data.fastag,
-        data.health,
+        data.idle || 0,
+        data.fastag || 0,
+        data.health || 100,
         data.odo,
         data.next_service,
-        data.insurance,
-        data.permit,
-        data.puc,
-        data.last_fill,
-        data.lat,
-        data.lng,
+        data.last_fill || null,
+        data.lat || null,
+        data.lng || null,
         JSON.stringify(data.route || []),
         JSON.stringify(data.alerts || []),
         JSON.stringify(data.service_history || []),
-        data.rc_url,
-        data.insurance_url,
-        data.puc_url,
+        data.rc_url || null,
         data.make,
         data.model,
         data.fuel_type,
@@ -89,17 +83,15 @@ const createVehicle = async (uid, data) => {
       ]
     );
     
-    // Update the device table if valid
-    if (validDeviceId) {
-      await client.query(
-        `UPDATE devices SET status = 'Assigned', assigned_vehicle = $1, assigned_organization = $2, updated_at = CURRENT_TIMESTAMP WHERE device_id = $3`,
-        [data.plate, uid, validDeviceId]
-      );
-      await client.query(
-        `INSERT INTO device_audit_logs (device_id, fleet_owner_uid, action, remarks) VALUES ($1, $2, 'Device Assigned', $3)`,
-        [validDeviceId, uid, `Assigned to vehicle ${data.plate}`]
-      );
-    }
+    // Update the device table to Assigned
+    await client.query(
+      `UPDATE devices SET status = 'Assigned', assigned_vehicle = $1, assigned_organization = $2, updated_at = CURRENT_TIMESTAMP WHERE device_id = $3`,
+      [data.plate, uid, validDeviceId]
+    );
+    await client.query(
+      `INSERT INTO device_audit_logs (device_id, fleet_owner_uid, action, remarks) VALUES ($1, $2, 'Device Assigned', $3)`,
+      [validDeviceId, uid, `Assigned to vehicle ${data.plate}`]
+    );
     
     await client.query('COMMIT');
     return result.rows[0];
@@ -122,15 +114,19 @@ const updateVehicle = async (uid, plate, data) => {
       throw new Error('Vehicle not found or unauthorized');
     }
     const oldDeviceId = oldVehRes.rows[0].device_id;
-    let newDeviceId = data.deviceId && data.deviceId.trim() !== '' ? data.deviceId.trim() : null;
+    const newDeviceId = data.deviceId ? String(data.deviceId).trim() : null;
+
+    if (!newDeviceId) {
+      throw new Error('IoT Device ID is mandatory for this vehicle.');
+    }
 
     if (newDeviceId && newDeviceId !== oldDeviceId) {
       // Validate new device
       const deviceRes = await client.query('SELECT * FROM devices WHERE device_id = $1', [newDeviceId]);
-      if (deviceRes.rows.length === 0) throw new Error('Device not found. Please check the Device ID.');
+      if (deviceRes.rows.length === 0) throw new Error(`Device '${newDeviceId}' not found in system.`);
       const device = deviceRes.rows[0];
-      if (device.status !== 'Available') throw new Error(`Device is currently ${device.status} and cannot be assigned.`);
-      if (device.assigned_vehicle) throw new Error(`Device is already assigned to vehicle ${device.assigned_vehicle}.`);
+      if (device.status !== 'Available') throw new Error(`Device '${newDeviceId}' is currently ${device.status} and cannot be assigned.`);
+      if (device.assigned_vehicle) throw new Error(`Device '${newDeviceId}' is already assigned to vehicle ${device.assigned_vehicle}.`);
       
       // Update new device
       await client.query(
@@ -156,36 +152,31 @@ const updateVehicle = async (uid, plate, data) => {
     }
 
     const result = await client.query(
-      `UPDATE vehicles SET device_id=$1, year=$2, type=$3, status=$4, driver=$5, loc=$6, speed=$7, fuel=$8, mil=$9, idle=$10, fastag=$11, health=$12, odo=$13, next_service=$14, insurance=$15, permit=$16, puc=$17, last_fill=$18, lat=$19, lng=$20, route=$21, alerts=$22, service_history=$23, rc_url=$24, insurance_url=$25, puc_url=$26, make=$27, model=$28, fuel_type=$29, fuel_capacity=$30
-       WHERE plate=$31 AND uid=$32
+      `UPDATE vehicles SET device_id=$1, year=$2, type=$3, status=$4, driver=$5, loc=$6, speed=$7, fuel=$8, mil=$9, idle=$10, fastag=$11, health=$12, odo=$13, next_service=$14, last_fill=$15, lat=$16, lng=$17, route=$18, alerts=$19, service_history=$20, rc_url=$21, make=$22, model=$23, fuel_type=$24, fuel_capacity=$25
+       WHERE plate=$26 AND uid=$27
        RETURNING *`,
       [
         newDeviceId,
         data.year,
         data.type,
-        data.status,
-        data.driver,
-        data.loc,
-        data.speed,
-        data.fuel,
+        data.status || 'Active',
+        data.driver || null,
+        data.loc || null,
+        data.speed || 0,
+        data.fuel || 100,
         data.mil,
-        data.idle,
-        data.fastag,
-        data.health,
+        data.idle || 0,
+        data.fastag || 0,
+        data.health || 100,
         data.odo,
         data.next_service,
-        data.insurance,
-        data.permit,
-        data.puc,
-        data.last_fill,
-        data.lat,
-        data.lng,
+        data.last_fill || null,
+        data.lat || null,
+        data.lng || null,
         JSON.stringify(data.route || []),
         JSON.stringify(data.alerts || []),
         JSON.stringify(data.service_history || []),
-        data.rc_url,
-        data.insurance_url,
-        data.puc_url,
+        data.rc_url || null,
         data.make,
         data.model,
         data.fuel_type,

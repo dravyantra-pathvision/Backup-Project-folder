@@ -13,10 +13,11 @@ const getAllDrivers = async (uid) => {
 const getAvailableDrivers = async (uid) => {
   const result = await pool.query(
     `SELECT * FROM drivers d WHERE d.uid = $1
-       AND (d.vehicle IS NULL OR d.vehicle = '' OR d.vehicle = 'None' OR d.vehicle = 'Unassigned')
+       AND COALESCE(d.on_leave, false) = false
        AND NOT EXISTS (
-         SELECT 1 FROM trips t WHERE t.uid = $1 AND (t.driver = d.id OR t.driver = d.name) AND (t.trip_completed IS NOT TRUE)
-       )`,
+         SELECT 1 FROM trips t WHERE t.uid = $1 AND (t.driver = d.id OR t.driver = d.name) AND (t.trip_completed IS NOT TRUE AND LOWER(COALESCE(t.status, '')) IN ('active', 'in progress', 'running'))
+       )
+     ORDER BY d.name ASC`,
     [uid]
   );
   return result.rows;

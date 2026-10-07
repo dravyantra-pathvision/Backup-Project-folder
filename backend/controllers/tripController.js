@@ -179,7 +179,7 @@ const getSummary = async (req, res) => {
     const totalIdleMinutes = Number(summary.totalIdleMinutes || 0);
     const totalIdleRupees  = Number(summary.totalIdleRupees !== undefined
       ? summary.totalIdleRupees
-      : Number(((totalIdleMinutes) * 1.7).toFixed(2)));
+      : Number(((totalIdleMinutes * 60) * 0.08).toFixed(2)));
     const totalIdleHours = totalIdleMinutes / 60;
     res.json({
       totalFuelLiters:       Math.round(summary.totalFuelUsed    || 0),

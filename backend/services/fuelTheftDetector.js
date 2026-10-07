@@ -8,7 +8,7 @@ const TRIPS_FILE = path.join(__dirname, '..', 'data', 'trips.json');
 
 // configuration: thresholds and window (seconds)
 // thresholds: tune via env vars if needed
-const DEFAULT_FUEL_THRESHOLD_LITERS = Number(process.env.FUEL_THEFT_THRESHOLD_LITERS) || 0.7; // liters
+const DEFAULT_FUEL_THRESHOLD_LITERS = Number(process.env.FUEL_THEFT_THRESHOLD_LITERS) || 3.0; // liters
 const DEFAULT_WINDOW_SECONDS = Number(process.env.FUEL_THEFT_WINDOW_SEC) || 5; // seconds
 const RASH_SPEED_THRESHOLD = Number(process.env.RASH_SPEED_THRESHOLD_KMPH) || 80; // km/h
 const HARSH_BRAKE_THRESHOLD = Number(process.env.HARSH_BRAKE_THRESHOLD_KMPH) || 40; // drop >=40 km/h within window

@@ -650,7 +650,7 @@ const initDB = async () => {
         -- 3. Idle Waste: Calculate ONLY on idle seconds exceeding owner's configured idle threshold
         idle_threshold_secs    := idle_threshold_mins * 60.0;
         idle_time_above_thresh := GREATEST(COALESCE(NEW.total_idle_time, 0) - idle_threshold_secs, 0.0);
-        NEW.idle_money_wasted  := ROUND(((idle_time_above_thresh / 60.0) * (1.70 * (fprice / 100.0)))::numeric, 2);
+        NEW.idle_money_wasted  := ROUND((idle_time_above_thresh * (0.08 * (fprice / 100.0)))::numeric, 2);
 
         idle_fuel_wasted := CASE
           WHEN fprice > 0 THEN ROUND((NEW.idle_money_wasted / fprice)::numeric, 2)
